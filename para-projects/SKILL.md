@@ -29,7 +29,7 @@ Before first use:
 2. If missing, run `python3 scripts/setup.py` from the skill directory
 3. Verify `TODOIST_API_TOKEN`, `NOTION_API_KEY_WORK`, and `NOTION_API_KEY_HOME` env vars are set
 
-If `todoist.parent_projects.work.id` or `.home.id` are empty, fetch all projects from `GET /rest/v2/projects`, filter by name (`💼 Work`, `🏡 Home`), write the IDs back to `config.json`, and confirm with the user.
+If `todoist.parent_projects.work.id` or `.home.id` are empty, fetch all projects from `GET /api/v1/projects`, filter by name (`💼 Work`, `🏡 Home`), write the IDs back to `config.json`, and confirm with the user.
 
 If `notion.work.database_id` or `notion.home.database_id` are empty, ask the user to provide them. Each database must belong to the corresponding Notion account and must have the integration connected (Settings → Connections in Notion).
 
@@ -104,13 +104,14 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 **Inputs:** name (required), description (required), context: home | work (optional — fall back to `default_context`)
 
 **Steps:**
-1. Determine prefix (`W` = work, `H` = home); get next ID: `uv run scripts/registry.py next-id W`
-2. Get kebab folder name: `uv run scripts/registry.py kebab "{name}"` → `{id}-{kebab}` (e.g. `W00004-nelo-merchant-risk-model`)
-3. Create folders at `{icloud_projects_path}/{folder_name}` and `{gdrive_projects_path}/{folder_name}`
-4. `uv run scripts/todoist.py create-project --context {context} --id {id} --name "{name}"` — captures `todoist_project_id` and Todoist URL from output
-5. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "Not Started" --todoist-url {todoist_url} --icloud-path "{icloud_projects_path}/{folder_name}" --gdrive-path "{gdrive_projects_path}/{folder_name}"` — captures `notion_page_id` and Notion URL from output
-6. `uv run scripts/registry.py add --id {id} --name "{name}" --description "{desc}" --todoist-id {todoist_project_id} --notion-id {notion_page_id}` — errors if name is a duplicate
-7. Confirm to user: show ID, folder paths, Todoist link, and Notion URL
+1. `uv run scripts/registry.py check-name "{name}"` — abort immediately if name is already taken, before any external calls
+2. Determine prefix (`W` = work, `H` = home); get next ID: `uv run scripts/registry.py next-id W`
+3. Get kebab folder name: `uv run scripts/registry.py kebab "{name}"` → `{id}-{kebab}` (e.g. `W00004-nelo-merchant-risk-model`)
+4. Create folders at `{icloud_projects_path}/{folder_name}` and `{gdrive_projects_path}/{folder_name}`
+5. `uv run scripts/todoist.py create-project --context {context} --id {id} --name "{name}"` — captures `todoist_project_id` and Todoist URL from output
+6. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "Not Started" --todoist-url {todoist_url} --icloud-path "{icloud_projects_path}/{folder_name}" --gdrive-path "{gdrive_projects_path}/{folder_name}"` — captures `notion_page_id` and Notion URL from output
+7. `uv run scripts/registry.py add --id {id} --name "{name}" --description "{desc}" --todoist-id {todoist_project_id} --notion-id {notion_page_id}`
+8. Confirm to user: show ID, folder paths, Todoist link, and Notion URL
 
 **Example output:**
 > ✅ Project created: **W00004 — Nelo Merchant Risk Model**

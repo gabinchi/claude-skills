@@ -22,12 +22,8 @@ import os
 import sys
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 
-CONFIG_PATH = (
-    Path.home()
-    / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json"
-)
+from utils import err, load_config
 
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -36,13 +32,6 @@ NOTION_VERSION = "2022-06-28"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def load_config():
-    if not CONFIG_PATH.exists():
-        err(f"Config not found at {CONFIG_PATH}. Run setup.py first.")
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
-
 
 def get_notion_creds(config, context):
     try:
@@ -57,11 +46,6 @@ def get_notion_creds(config, context):
     if not database_id:
         err(f"notion.{context}.database_id is not set in config.json")
     return token, database_id
-
-
-def err(msg):
-    print(json.dumps({"error": msg}), file=sys.stderr)
-    sys.exit(1)
 
 
 def request(method, path, *, token, body=None):

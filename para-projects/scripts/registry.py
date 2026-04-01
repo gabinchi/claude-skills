@@ -24,9 +24,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-_override = os.environ.get("_PARA_REGISTRY_DIR_OVERRIDE")
-REGISTRY_DIR = Path(_override) if _override else Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry"
-REGISTRY_FILE = REGISTRY_DIR / "registry.json"
+from utils import REGISTRY_DIR, REGISTRY_FILE, err
 
 VALID_STATUSES = ["Not Started", "In Progress", "Done"]
 
@@ -85,11 +83,6 @@ def find_one(projects, id_or_name):
     return None, f"Not found: '{id_or_name}'"
 
 
-def err(msg):
-    print(json.dumps({"error": msg}), file=sys.stderr)
-    sys.exit(1)
-
-
 def print_table(projects, extra_col=None):
     if not projects:
         print("No projects found.")
@@ -114,6 +107,15 @@ def print_table(projects, extra_col=None):
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
+def cmd_check_name(args):
+    """Exit 0 if name is available, non-zero if a duplicate active project exists."""
+    projects = load()
+    for p in projects:
+        if p["name"].lower() == args.name.lower() and p.get("status") != "Done":
+            err(f"Active project named '{args.name}' already exists: {p['id']}")
+    print(json.dumps({"available": True, "name": args.name}))
+
 
 def cmd_next_id(args):
     projects = load()
@@ -251,6 +253,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # check-name
+    p = sub.add_parser("check-name", help="Check if a project name is available (exits non-zero if duplicate)")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_check_name)
 
     # next-id
     p = sub.add_parser("next-id", help="Get the next available ID for a prefix")

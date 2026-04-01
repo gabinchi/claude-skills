@@ -14,12 +14,12 @@ import sys
 import urllib.request
 from pathlib import Path
 
-REGISTRY_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry"
-CONFIG_PATH = REGISTRY_DIR / "config.json"
-REGISTRY_PATH = REGISTRY_DIR / "registry.json"
+from utils import REGISTRY_DIR, CONFIG_PATH, REGISTRY_FILE, TODOIST_REST_BASE
 
-TODOIST_API_URL = "https://api.todoist.com/rest/v2/projects"
-PARENT_NAMES = {"💼 Work": "work", "🏡 Home": "home"}
+REGISTRY_PATH = REGISTRY_FILE  # alias for clarity in setup output
+TEMPLATE_PATH = Path(__file__).parent.parent / "config.template.json"
+
+TODOIST_API_URL = f"{TODOIST_REST_BASE}/projects"
 
 
 def get_todoist_token():
@@ -37,15 +37,40 @@ def fetch_todoist_projects(token):
         TODOIST_API_URL,
         headers={"Authorization": f"Bearer {token}"},
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode())
+        # API v1 may return {"results": [...]} instead of a plain array
+        if isinstance(data, list):
+            return data
+        for key in ("results", "projects", "items"):
+            if key in data and isinstance(data[key], list):
+                return data[key]
+        print(f"⚠ Unexpected Todoist response structure: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        return []
+    except urllib.error.HTTPError as e:
+        print(f"⚠ Todoist API error: HTTP {e.code} — {e.reason}")
+        if e.code == 401:
+            print("  Token may be invalid or expired. Check TODOIST_API_TOKEN.")
+        elif e.code == 410:
+            print("  Endpoint gone. The Todoist API may have changed.")
+        print("  Skipping Todoist setup — add parent project IDs to config.json manually.")
+        return []
+    except urllib.error.URLError as e:
+        print(f"⚠ Could not reach Todoist: {e.reason}. Skipping Todoist setup.")
+        return []
 
 
-def resolve_parent_ids(projects):
+def resolve_parent_ids(projects, config):
+    # Build name→key mapping from config so it stays in sync with config.template.json
+    parent_names = {
+        v["name"]: k
+        for k, v in config.get("todoist", {}).get("parent_projects", {}).items()
+    }
     found = {}
     for p in projects:
-        if p["name"] in PARENT_NAMES:
-            key = PARENT_NAMES[p["name"]]
+        if p["name"] in parent_names:
+            key = parent_names[p["name"]]
             found[key] = {"name": p["name"], "id": str(p["id"])}
     return found
 
@@ -55,25 +80,12 @@ def load_or_create_config():
         with open(CONFIG_PATH) as f:
             return json.load(f)
 
-    # Default config
-    icloud_base = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
-    gdrive_base = Path.home() / "Library/CloudStorage"
-    # Find the first Google Drive folder if present
-    gdrive_roots = list(gdrive_base.glob("GoogleDrive-*")) if gdrive_base.exists() else []
-    gdrive_root = str(gdrive_roots[0] / "My Drive") if gdrive_roots else str(gdrive_base / "GoogleDrive-you@gmail.com/My Drive")
-    return {
-        "default_context": "work",
-        "icloud_projects_path": str(icloud_base / "1 🎯 Projects"),
-        "icloud_archive_path": str(icloud_base / "4 🗃️ Archive/Projects"),
-        "gdrive_projects_path": str(Path(gdrive_root) / "1 🎯 Projects"),
-        "gdrive_archive_path": str(Path(gdrive_root) / "4 🗃️ Archive/Projects"),
-        "todoist": {
-            "parent_projects": {
-                "work": {"name": "💼 Work", "id": ""},
-                "home": {"name": "🏡 Home", "id": ""},
-            }
-        },
-    }
+    if not TEMPLATE_PATH.exists():
+        print(f"ERROR: config.template.json not found at {TEMPLATE_PATH}")
+        sys.exit(1)
+
+    with open(TEMPLATE_PATH) as f:
+        return json.load(f)
 
 
 def main():
@@ -102,22 +114,25 @@ def main():
             print(f"✓ Directory: {path}")
 
     # 5. Resolve Todoist parent IDs
-    token = get_todoist_token()
-    print("\nFetching Todoist projects...")
-    projects = fetch_todoist_projects(token)
-    parents = resolve_parent_ids(projects)
-
-    if "work" in parents:
-        config["todoist"]["parent_projects"]["work"] = parents["work"]
-        print(f'✓ Found "{parents["work"]["name"]}" → ID: {parents["work"]["id"]}')
+    token = os.environ.get("TODOIST_API_TOKEN")
+    if not token:
+        print("\n⚠ TODOIST_API_TOKEN not set — skipping Todoist setup.")
+        print("  Add parent project IDs to config.json manually when ready.")
+        parents = {}
     else:
-        print('⚠ Could not find "💼 Work" project in Todoist. Create it first.')
+        print("\nFetching Todoist projects...")
+        projects = fetch_todoist_projects(token)
+        parents = resolve_parent_ids(projects, config)
 
-    if "home" in parents:
-        config["todoist"]["parent_projects"]["home"] = parents["home"]
-        print(f'✓ Found "{parents["home"]["name"]}" → ID: {parents["home"]["id"]}')
-    else:
-        print('⚠ Could not find "🏡 Home" project in Todoist. Create it first.')
+    if parents:
+        for key in ["work", "home"]:
+            if key in parents:
+                config["todoist"]["parent_projects"][key] = parents[key]
+                print(f'✓ Found "{parents[key]["name"]}" → ID: {parents[key]["id"]}')
+            else:
+                emoji = "💼" if key == "work" else "🏡"
+                name = "Work" if key == "work" else "Home"
+                print(f'⚠ Could not find "{emoji} {name}" in Todoist. Create it first, then re-run setup.')
 
     # 6. Write config
     with open(CONFIG_PATH, "w") as f:
@@ -131,8 +146,11 @@ def main():
     print(f"iCloud archive:   {config.get('icloud_archive_path', 'not set')}")
     print(f"GDrive projects:  {config['gdrive_projects_path']}")
     print(f"GDrive archive:   {config.get('gdrive_archive_path', 'not set')}")
-    print(f"\nAdd this to your ~/.zshrc to persist the token:")
-    print(f'  export TODOIST_API_TOKEN="{token}"')
+    if token:
+        print(f"\nAdd this to your ~/.zshrc to persist the token:")
+        print(f'  export TODOIST_API_TOKEN="{token}"')
+    else:
+        print(f"\nWhen ready, set TODOIST_API_TOKEN in ~/.zshrc and re-run setup.")
 
 
 if __name__ == "__main__":

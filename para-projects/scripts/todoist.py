@@ -20,15 +20,8 @@ import os
 import sys
 import urllib.request
 import urllib.parse
-from pathlib import Path
 
-CONFIG_PATH = (
-    Path.home()
-    / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json"
-)
-
-REST_BASE = "https://api.todoist.com/rest/v2"
-SYNC_BASE = "https://api.todoist.com/sync/v9"
+from utils import err, load_config, unwrap_list, TODOIST_REST_BASE as REST_BASE, TODOIST_SYNC_BASE as SYNC_BASE
 
 
 # ---------------------------------------------------------------------------
@@ -40,18 +33,6 @@ def get_token():
     if not token:
         err("TODOIST_API_TOKEN environment variable is not set")
     return token
-
-
-def load_config():
-    if not CONFIG_PATH.exists():
-        err(f"Config not found at {CONFIG_PATH}. Run setup.py first.")
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
-
-
-def err(msg):
-    print(json.dumps({"error": msg}), file=sys.stderr)
-    sys.exit(1)
 
 
 def request(method, url, *, token, body=None, form=None):
@@ -111,12 +92,8 @@ def cmd_update_project(args):
 
 def cmd_get_tasks(args):
     token = get_token()
-    tasks = request(
-        "GET",
-        f"{REST_BASE}/tasks?project_id={args.project_id}",
-        token=token,
-    )
-    print(json.dumps(tasks))
+    data = request("GET", f"{REST_BASE}/tasks?project_id={args.project_id}", token=token)
+    print(json.dumps(unwrap_list(data)))
 
 
 def cmd_delete_task(args):
@@ -127,11 +104,7 @@ def cmd_delete_task(args):
 
 def cmd_delete_incomplete_tasks(args):
     token = get_token()
-    tasks = request(
-        "GET",
-        f"{REST_BASE}/tasks?project_id={args.project_id}",
-        token=token,
-    )
+    tasks = unwrap_list(request("GET", f"{REST_BASE}/tasks?project_id={args.project_id}", token=token))
     deleted = []
     for task in tasks:
         request("DELETE", f"{REST_BASE}/tasks/{task['id']}", token=token)

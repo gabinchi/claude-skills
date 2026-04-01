@@ -107,6 +107,28 @@ def reg_dir_with_projects(reg_dir):
 
 
 # ---------------------------------------------------------------------------
+# check-name
+# ---------------------------------------------------------------------------
+
+class TestCheckName:
+    def test_available_name(self, reg_dir_with_projects):
+        result = run("check-name", "Brand New Project")
+        assert result["available"] is True
+
+    def test_rejects_duplicate_active_name(self, reg_dir_with_projects):
+        error = run("check-name", "Fraud Adjudication Agent", expect_error=True)
+        assert "already exists" in error["error"]
+
+    def test_case_insensitive(self, reg_dir_with_projects):
+        error = run("check-name", "fraud adjudication agent", expect_error=True)
+        assert "already exists" in error["error"]
+
+    def test_allows_name_of_done_project(self, reg_dir_with_projects):
+        result = run("check-name", "Old Closed Project")
+        assert result["available"] is True
+
+
+# ---------------------------------------------------------------------------
 # next-id
 # ---------------------------------------------------------------------------
 

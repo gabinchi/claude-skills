@@ -1,7 +1,7 @@
 {
   "default_context": "work",
-  "icloud_projects_path": "~/Library/Mobile Documents/com~apple~CloudDocs/1 🎯 Projects",
-  "icloud_archive_path": "~/Library/Mobile Documents/com~apple~CloudDocs/4 🗃️ Archive/Projects",
+  "icloud_projects_path": "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/1 🎯 Projects",
+  "icloud_archive_path": "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/4 🗃️ Archive/Projects",
   "gdrive_projects_path": "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/1 🎯 Projects",
   "gdrive_archive_path": "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/4 🗃️ Archive/Projects",
   "todoist": {
