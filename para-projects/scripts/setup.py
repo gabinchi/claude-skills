@@ -56,15 +56,17 @@ def load_or_create_config():
             return json.load(f)
 
     # Default config
+    icloud_base = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
+    gdrive_base = Path.home() / "Library/CloudStorage"
+    # Find the first Google Drive folder if present
+    gdrive_roots = list(gdrive_base.glob("GoogleDrive-*")) if gdrive_base.exists() else []
+    gdrive_root = str(gdrive_roots[0] / "My Drive") if gdrive_roots else str(gdrive_base / "GoogleDrive-you@gmail.com/My Drive")
     return {
         "default_context": "work",
-        "icloud_projects_path": str(
-            Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Projects"
-        ),
-        "gdrive_projects_path": str(
-            Path.home()
-            / "Library/CloudStorage/GoogleDrive-gabinchi@gmail.com/My Drive/Projects"
-        ),
+        "icloud_projects_path": str(icloud_base / "1 🎯 Projects"),
+        "icloud_archive_path": str(icloud_base / "4 🗃️ Archive/Projects"),
+        "gdrive_projects_path": str(Path(gdrive_root) / "1 🎯 Projects"),
+        "gdrive_archive_path": str(Path(gdrive_root) / "4 🗃️ Archive/Projects"),
         "todoist": {
             "parent_projects": {
                 "work": {"name": "💼 Work", "id": ""},
@@ -92,11 +94,12 @@ def main():
     # 3. Load or create config
     config = load_or_create_config()
 
-    # 4. Create project directories
-    for key in ["icloud_projects_path", "gdrive_projects_path"]:
-        path = Path(os.path.expanduser(config[key]))
-        path.mkdir(parents=True, exist_ok=True)
-        print(f"✓ Projects directory: {path}")
+    # 4. Create project and archive directories
+    for key in ["icloud_projects_path", "icloud_archive_path", "gdrive_projects_path", "gdrive_archive_path"]:
+        if key in config:
+            path = Path(os.path.expanduser(config[key]))
+            path.mkdir(parents=True, exist_ok=True)
+            print(f"✓ Directory: {path}")
 
     # 5. Resolve Todoist parent IDs
     token = get_todoist_token()
@@ -123,9 +126,11 @@ def main():
 
     # 7. Summary
     print("\n=== Setup Complete ===")
-    print(f"Default context: {config['default_context']}")
-    print(f"iCloud path:     {config['icloud_projects_path']}")
-    print(f"Google Drive:    {config['gdrive_projects_path']}")
+    print(f"Default context:  {config['default_context']}")
+    print(f"iCloud projects:  {config['icloud_projects_path']}")
+    print(f"iCloud archive:   {config.get('icloud_archive_path', 'not set')}")
+    print(f"GDrive projects:  {config['gdrive_projects_path']}")
+    print(f"GDrive archive:   {config.get('gdrive_archive_path', 'not set')}")
     print(f"\nAdd this to your ~/.zshrc to persist the token:")
     print(f'  export TODOIST_API_TOKEN="{token}"')
 

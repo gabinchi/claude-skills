@@ -7,28 +7,27 @@ A Claude Code skill for managing projects using the PARA method, with synchroniz
 ### 1. Copy the skill to your Claude Code skills directory
 
 ```bash
-# Create the skill directory
 mkdir -p ~/.claude/skills/para-projects
-
-# Copy files (adjust source path as needed)
 cp -r ./para-projects/* ~/.claude/skills/para-projects/
 ```
-
-Alternatively, if you manage skills in a repo or another location, place the `para-projects/` folder wherever your Claude Code instance reads skills from.
 
 ### 2. Get your Todoist API token
 
 1. Go to https://app.todoist.com/app/settings/integrations/developer
 2. Copy the API token
 
-### 3. Set the environment variable
+### 3. Set the environment variables
 
 Add to your `~/.zshrc`:
 ```bash
 export TODOIST_API_TOKEN="your-token-here"
+export NOTION_API_KEY_WORK="your-work-notion-token"
+export NOTION_API_KEY_HOME="your-home-notion-token"
 ```
 
 Then reload: `source ~/.zshrc`
+
+To get Notion API keys: go to https://www.notion.so/my-integrations, create an integration per account, and copy the token. Then share each target database with its integration (open the database in Notion → ··· → Connections).
 
 ### 4. Ensure Todoist parent projects exist
 
@@ -45,7 +44,6 @@ python3 scripts/setup.py
 
 This will:
 - Create `~/.../iCloud Drive/.project-registry/` with config and registry
-- Create project folders in iCloud and Google Drive if they don't exist
 - Resolve Todoist parent project IDs automatically
 
 ### 6. Set default context per machine
@@ -54,20 +52,47 @@ Edit `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.js
 - Personal Mac: `"default_context": "home"`
 - Work Mac: `"default_context": "work"`
 
-Since config.json lives in iCloud, you'll share it across devices. If you need different defaults per machine, you can override by telling Claude Code: "create a home project" or "create a work project."
+Since config.json lives in iCloud, it syncs across devices. Override per-request by saying "create a home project" or "create a work project."
+
+### 7. Set up folder structure (optional)
+
+If starting fresh, let the skill create your PARA folders:
+```
+> /para-projects setup folder structure
+```
+
+After setup, update `icloud_projects_path`, `icloud_archive_path`, `gdrive_projects_path`, and `gdrive_archive_path` in `config.json` to point to the new folders.
 
 ## Usage (in Claude Code)
 
+This skill must be invoked explicitly using `/para-projects`:
+
 ```
-> create a project called "Merchant Risk Model" — it's a credit risk scoring model for Nelo merchants
+> /para-projects create a project called "Merchant Risk Model" — it's a credit risk scoring model for Nelo merchants
 
-> list my work projects
+> /para-projects list my work projects
 
-> rename W0003 to "Merchant Risk Scoring v2"
+> /para-projects search projects "risk"
 
-> mark H0002 as done
+> /para-projects rename W00003 to "Merchant Risk Scoring v2"
 
-> show project W0001
+> /para-projects move W00003 to home
+
+> /para-projects mark H00002 as done
+
+> /para-projects show project W00001
+
+> /para-projects close project W00001
+
+> /para-projects restore project W00001
+
+> /para-projects sync status
+
+> /para-projects sync project W00002 to todoist
+
+> /para-projects sync project W00002 to notion
+
+> /para-projects setup folder structure
 ```
 
 ## File Locations
@@ -77,12 +102,22 @@ Since config.json lives in iCloud, you'll share it across devices. If you need d
 | Skill | `~/.claude/skills/para-projects/SKILL.md` |
 | Config | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json` |
 | Registry | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/registry.json` |
-| iCloud folders | `~/Library/Mobile Documents/com~apple~CloudDocs/Projects/{id}-{name}/` |
-| Google Drive folders | `~/Library/CloudStorage/GoogleDrive-gabinchi@gmail.com/My Drive/Projects/{id}-{name}/` |
+| iCloud project folders | `~/Library/Mobile Documents/com~apple~CloudDocs/1 🎯 Projects/{id}-{name}/` |
+| iCloud archive | `~/Library/Mobile Documents/com~apple~CloudDocs/4 🗃️ Archive/Projects/{id}-{name}/` |
+| Google Drive project folders | `~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/1 🎯 Projects/{id}-{name}/` |
+| Google Drive archive | `~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/4 🗃️ Archive/Projects/{id}-{name}/` |
 
 ## Project ID Format
 
-- Work: `W0001`, `W0002`, ...
-- Home: `H0001`, `H0002`, ...
+- Work: `W00001`, `W00002`, ...
+- Home: `H00001`, `H00002`, ...
 
 Auto-incremented per context from the registry.
+
+## Project Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `Not Started` | Default on creation |
+| `In Progress` | Actively being worked on |
+| `Done` | Closed via the Close Project action |
