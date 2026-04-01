@@ -1,0 +1,11 @@
+{
+  "default_context": "work",
+  "icloud_projects_path": "~/Library/Mobile Documents/com~apple~CloudDocs/Projects",
+  "gdrive_projects_path": "~/Library/CloudStorage/GoogleDrive-gabinchi@gmail.com/My Drive/Projects",
+  "todoist": {
+    "parent_projects": {
+      "work": { "name": "💼 Work", "id": "" },
+      "home": { "name": "🏡 Home", "id": "" }
+    }
+  }
+}
