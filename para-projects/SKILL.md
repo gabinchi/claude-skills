@@ -1,6 +1,6 @@
 ---
 name: para-projects
-description: "Manage PARA-method projects with synced folders and Todoist integration. Only invoke this skill when explicitly called with /para-projects."
+description: Manage PARA-method projects with synced folders and Todoist integration. Only invoke this skill when explicitly called with /para-projects.
 ---
 
 # PARA Project Manager
