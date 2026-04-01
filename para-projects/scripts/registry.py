@@ -24,7 +24,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-REGISTRY_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry"
+_override = os.environ.get("_PARA_REGISTRY_DIR_OVERRIDE")
+REGISTRY_DIR = Path(_override) if _override else Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/.project-registry"
 REGISTRY_FILE = REGISTRY_DIR / "registry.json"
 
 VALID_STATUSES = ["Not Started", "In Progress", "Done"]

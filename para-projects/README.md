@@ -39,7 +39,7 @@ In Todoist, make sure you have two top-level projects:
 
 ```bash
 cd ~/.claude/skills/para-projects
-python3 scripts/setup.py
+uv run scripts/setup.py
 ```
 
 This will:
@@ -54,7 +54,15 @@ Edit `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.js
 
 Since config.json lives in iCloud, it syncs across devices. Override per-request by saying "create a home project" or "create a work project."
 
-### 7. Set up folder structure (optional)
+### 7. Run tests (optional)
+
+```bash
+cd ~/.claude/skills/para-projects
+uv sync
+uv run pytest -v
+```
+
+### 8. Set up folder structure (optional)
 
 If starting fresh, let the skill create your PARA folders:
 ```
