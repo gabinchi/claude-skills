@@ -6,8 +6,8 @@
   "gdrive_archive_path": "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/4 🗃️ Archive/Projects",
   "todoist": {
     "parent_projects": {
-      "work": { "name": "💼 Work", "id": "" },
-      "home": { "name": "🏡 Home", "id": "" }
+      "work": { "name": "1 🎯 Projects", "parent_name": "💼 Work", "id": "" },
+      "home": { "name": "1 🎯 Projects", "parent_name": "🏡 Home", "id": "" }
     }
   },
   "notion": {

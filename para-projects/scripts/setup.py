@@ -62,16 +62,29 @@ def fetch_todoist_projects(token):
 
 
 def resolve_parent_ids(projects, config):
-    # Build name→key mapping from config so it stays in sync with config.template.json
-    parent_names = {
-        v["name"]: k
-        for k, v in config.get("todoist", {}).get("parent_projects", {}).items()
-    }
-    found = {}
+    # Build id→project map for hierarchical lookup
+    by_id = {str(p["id"]): p for p in projects}
+    # Build name→id map for top-level lookup
+    by_name = {}
     for p in projects:
-        if p["name"] in parent_names:
-            key = parent_names[p["name"]]
-            found[key] = {"name": p["name"], "id": str(p["id"])}
+        by_name.setdefault(p["name"], []).append(str(p["id"]))
+
+    found = {}
+    for key, entry in config.get("todoist", {}).get("parent_projects", {}).items():
+        name = entry.get("name")
+        parent_name = entry.get("parent_name")
+        if parent_name:
+            # Two-level: find child named `name` whose parent is named `parent_name`
+            parent_ids = set(by_name.get(parent_name, []))
+            for p in projects:
+                if p["name"] == name and str(p.get("parent_id", "")) in parent_ids:
+                    found[key] = {"name": p["name"], "parent_name": parent_name, "id": str(p["id"])}
+                    break
+        elif name:
+            # Flat lookup (fallback)
+            for pid in by_name.get(name, []):
+                found[key] = {"name": name, "id": pid}
+                break
     return found
 
 
@@ -136,11 +149,15 @@ def main():
         for key in ["work", "home"]:
             if key in parents:
                 config["todoist"]["parent_projects"][key] = parents[key]
-                print(f'✓ Found "{parents[key]["name"]}" → ID: {parents[key]["id"]}')
+                p = parents[key]
+                path = f"{p['parent_name']}/{p['name']}" if p.get("parent_name") else p["name"]
+                print(f'✓ Found "{path}" → ID: {p["id"]}')
             else:
-                emoji = "💼" if key == "work" else "🏡"
-                name = "Work" if key == "work" else "Home"
-                print(f'⚠ Could not find "{emoji} {name}" in Todoist. Create it first, then re-run setup.')
+                ctx_cfg = config["todoist"]["parent_projects"].get(key, {})
+                parent_name = ctx_cfg.get("parent_name", "")
+                child_name = ctx_cfg.get("name", "1 🎯 Projects")
+                path = f"{parent_name}/{child_name}" if parent_name else child_name
+                print(f'⚠ Could not find "{path}" in Todoist. Create it first, then re-run setup.')
 
     # 6. Write config
     with open(CONFIG_PATH, "w") as f:
