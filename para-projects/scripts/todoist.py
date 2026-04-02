@@ -74,7 +74,7 @@ def cmd_create_project(args):
         "POST",
         f"{REST_BASE}/projects",
         token=token,
-        body={"name": f"{args.id}-{args.name}", "parent_id": parent_id},
+        body={"name": f"{args.id} - {args.name}", "parent_id": parent_id},
     )
     print(json.dumps({"id": result["id"], "name": result["name"], "url": f"https://app.todoist.com/app/project/{result['id']}"}))
 

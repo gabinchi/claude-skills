@@ -56,11 +56,17 @@ def save(projects):
         raise
 
 
-def to_kebab(name):
-    name = name.lower()
-    name = re.sub(r"[^a-z0-9\s-]", "", name)
-    name = re.sub(r"\s+", "-", name.strip())
-    return name
+ILLEGAL_CHARS = set("/:")
+ILLEGAL_CHARS_DISPLAY = "/ and :"
+
+
+def to_folder_name(name):
+    """Format a project name as a folder-safe string: strip / and : only, preserve everything else."""
+    return re.sub(r"[/:]", "", name).strip()
+
+
+def has_illegal_chars(name):
+    return bool(set(name) & ILLEGAL_CHARS)
 
 
 def find_one(projects, id_or_name):
@@ -109,7 +115,9 @@ def print_table(projects, extra_col=None):
 # ---------------------------------------------------------------------------
 
 def cmd_check_name(args):
-    """Exit 0 if name is available, non-zero if a duplicate active project exists."""
+    """Exit 0 if name is valid and available, non-zero otherwise."""
+    if has_illegal_chars(args.name):
+        err(f"Project name contains illegal characters ({ILLEGAL_CHARS_DISPLAY}): '{args.name}'")
     projects = load()
     for p in projects:
         if p["name"].lower() == args.name.lower() and p.get("status") != "Done":
@@ -239,8 +247,8 @@ def cmd_search(args):
             print_table(results, extra_col=("Match", "_match"))
 
 
-def cmd_kebab(args):
-    print(to_kebab(args.name))
+def cmd_folder_name(args):
+    print(to_folder_name(args.name))
 
 
 # ---------------------------------------------------------------------------
@@ -306,10 +314,10 @@ def main():
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_search)
 
-    # kebab
-    p = sub.add_parser("kebab", help="Convert a name to kebab-case for folder naming")
+    # folder-name
+    p = sub.add_parser("folder-name", help="Format a project name as a folder-safe string")
     p.add_argument("name")
-    p.set_defaults(func=cmd_kebab)
+    p.set_defaults(func=cmd_folder_name)
 
     args = parser.parse_args()
     args.func(args)

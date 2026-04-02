@@ -167,21 +167,27 @@ class TestNextId:
 # kebab
 # ---------------------------------------------------------------------------
 
-class TestKebab:
+class TestFolderName:
     def test_basic(self, reg_dir):
-        assert run("kebab", "Fraud Adjudication Agent") == "fraud-adjudication-agent"
+        assert run("folder-name", "Fraud Adjudication Agent") == "Fraud Adjudication Agent"
 
-    def test_strips_special_chars(self, reg_dir):
-        assert run("kebab", "Hello, World! (v2)") == "hello-world-v2"
+    def test_preserves_casing(self, reg_dir):
+        assert run("folder-name", "My Project") == "My Project"
 
-    def test_multiple_spaces(self, reg_dir):
-        assert run("kebab", "My   Project") == "my-project"
+    def test_preserves_special_chars(self, reg_dir):
+        assert run("folder-name", "Q&A Research") == "Q&A Research"
 
-    def test_already_lowercase(self, reg_dir):
-        assert run("kebab", "simple") == "simple"
+    def test_strips_slash(self, reg_dir):
+        assert run("folder-name", "Work/Home") == "WorkHome"
+
+    def test_strips_colon(self, reg_dir):
+        assert run("folder-name", "Phase: Alpha") == "Phase Alpha"
+
+    def test_strips_both(self, reg_dir):
+        assert run("folder-name", "A/B: Test") == "AB Test"
 
     def test_numbers_preserved(self, reg_dir):
-        assert run("kebab", "Project 42") == "project-42"
+        assert run("folder-name", "Project 42") == "Project 42"
 
 
 # ---------------------------------------------------------------------------

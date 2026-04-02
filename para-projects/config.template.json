@@ -11,7 +11,8 @@
     }
   },
   "notion": {
-    "work": { "database_id": "", "api_key_env": "NOTION_API_KEY_WORK" },
-    "home": { "database_id": "", "api_key_env": "NOTION_API_KEY_HOME" }
+    "database_id": "335eede4-2aca-8137-9f0f-f1ae8fb5c5d1",
+    "parent_page_id": "2d0eede42aca8092a65bd4635803480c",
+    "api_key_env": "NOTION_API_TOKEN"
   }
 }

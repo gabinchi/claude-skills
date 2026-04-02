@@ -20,18 +20,18 @@ Four helper scripts live in `scripts/`:
 - **`setup.py`** — first-run only. Creates the registry directory, initializes `config.json` with correct PARA paths, and resolves Todoist parent project IDs.
 - **`registry.py`** — registry CRUD CLI. All operations use this script instead of reading/writing `registry.json` directly.
 - **`todoist.py`** — Todoist API CLI. Handles project creation, rename, task deletion, and archiving.
-- **`notion.py`** — Notion API CLI. Handles page creation, updates, archiving, and unarchiving across separate work/home accounts.
+- **`notion.py`** — Notion API CLI. Handles page creation, updates, archiving, and unarchiving.
 
 ## Setup
 
 Before first use:
 1. Read `config.json` from `~/.../iCloud Drive/.project-registry/`
 2. If missing, run `python3 scripts/setup.py` from the skill directory
-3. Verify `TODOIST_API_TOKEN`, `NOTION_API_KEY_WORK`, and `NOTION_API_KEY_HOME` env vars are set
+3. Verify `TODOIST_API_TOKEN` and `NOTION_API_TOKEN` env vars are set
 
 If `todoist.parent_projects.work.id` or `.home.id` are empty, fetch all projects from `GET /api/v1/projects`, filter by name (`💼 Work`, `🏡 Home`), write the IDs back to `config.json`, and confirm with the user.
 
-If `notion.work.database_id` or `notion.home.database_id` are empty, ask the user to provide them. Each database must belong to the corresponding Notion account and must have the integration connected (Settings → Connections in Notion).
+If `notion.database_id` is empty, ask the user to provide it. The database must have the integration connected (Settings → Connections in Notion).
 
 ### Config Location
 
@@ -57,15 +57,16 @@ If `notion.work.database_id` or `notion.home.database_id` are empty, ask the use
     }
   },
   "notion": {
-    "work": { "database_id": "", "api_key_env": "NOTION_API_KEY_WORK" },
-    "home": { "database_id": "", "api_key_env": "NOTION_API_KEY_HOME" }
+    "database_id": "335eede4-2aca-8137-9f0f-f1ae8fb5c5d1",
+    "parent_page_id": "2d0eede42aca8092a65bd4635803480c",
+    "api_key_env": "NOTION_API_TOKEN"
   }
 }
 ```
 
 The archive paths must point to the `Projects/` subfolder inside `4 🗃️ Archive/`, matching what Setup Folder Structure creates.
 
-Work and home use separate Notion accounts and API keys. Set `NOTION_API_KEY_WORK` and `NOTION_API_KEY_HOME` as environment variables. Each `database_id` must belong to the respective account's workspace.
+All projects (work and home) sync to a single Notion database. Set `NOTION_API_TOKEN` as an environment variable.
 
 ---
 
@@ -106,17 +107,17 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 **Steps:**
 1. `uv run scripts/registry.py check-name "{name}"` — abort immediately if name is already taken, before any external calls
 2. Determine prefix (`W` = work, `H` = home); get next ID: `uv run scripts/registry.py next-id W`
-3. Get kebab folder name: `uv run scripts/registry.py kebab "{name}"` → `{id}-{kebab}` (e.g. `W00004-nelo-merchant-risk-model`)
+3. Get kebab folder name: `uv run scripts/registry.py folder-name "{name}"` → `{id} - {kebab}` (e.g. `W00004 - Nelo Merchant Risk Model`)
 4. Create folders at `{icloud_projects_path}/{folder_name}` and `{gdrive_projects_path}/{folder_name}`
 5. `uv run scripts/todoist.py create-project --context {context} --id {id} --name "{name}"` — captures `todoist_project_id` and Todoist URL from output
-6. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "Not Started" --todoist-url {todoist_url} --icloud-path "{icloud_projects_path}/{folder_name}" --gdrive-path "{gdrive_projects_path}/{folder_name}"` — captures `notion_page_id` and Notion URL from output
+6. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "Not Started" --todoist-project-id {todoist_project_id} --icloud-path "{icloud_projects_path}/{folder_name}" --gdrive-path "{gdrive_projects_path}/{folder_name}"` — captures `notion_page_id` and Notion URL from output
 7. `uv run scripts/registry.py add --id {id} --name "{name}" --description "{desc}" --todoist-id {todoist_project_id} --notion-id {notion_page_id}`
 8. Confirm to user: show ID, folder paths, Todoist link, and Notion URL
 
 **Example output:**
-> ✅ Project created: **W00004 — Nelo Merchant Risk Model**
-> - iCloud: `1 🎯 Projects/W00004-nelo-merchant-risk-model/`
-> - Google Drive: `1 🎯 Projects/W00004-nelo-merchant-risk-model/`
+> ✅ Project created: **W00004 - Nelo Merchant Risk Model**
+> - iCloud: `1 🎯 Projects/W00004 - Nelo Merchant Risk Model/`
+> - Google Drive: `1 🎯 Projects/W00004 - Nelo Merchant Risk Model/`
 > - Todoist: https://app.todoist.com/app/project/2349876124
 > - Notion: https://notion.so/abc123def457
 
@@ -129,13 +130,14 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 **Inputs:** project ID or current name, new name
 
 **Steps:**
-1. Find project: `uv run scripts/registry.py find "{id_or_name}"` — captures current name, id, todoist_project_id
-2. Build old and new folder names using `registry.py kebab`
-3. Rename iCloud folder; if that succeeds, rename Google Drive folder; if Google Drive fails, rename iCloud folder back and abort
-4. `uv run scripts/todoist.py update-project {todoist_project_id} --name "{id}-{new_name}"`; if it fails, warn but do not roll back — folders and registry are source of truth
-5. `uv run scripts/notion.py update-page {notion_page_id} --context {context} --name "{new_name}" --id {id}`; if it fails, warn but do not roll back
-6. `uv run scripts/registry.py update "{id}" --name "{new_name}"` — errors if new name is a duplicate
-7. Confirm changes to user
+1. `uv run scripts/registry.py check-name "{new_name}"` — abort immediately if name contains `/` or `:`, or is already taken
+2. Find project: `uv run scripts/registry.py find "{id_or_name}"` — captures current name, id, todoist_project_id
+3. Build old and new folder names using `registry.py kebab`
+4. Rename iCloud folder; if that succeeds, rename Google Drive folder; if Google Drive fails, rename iCloud folder back and abort
+5. `uv run scripts/todoist.py update-project {todoist_project_id} --name "{id} - {new_name}"`; if it fails, warn but do not roll back — folders and registry are source of truth
+6. `uv run scripts/notion.py update-page {notion_page_id} --context {context} --name "{new_name}" --id {id} --icloud-path "{new_icloud_path}" --gdrive-path "{new_gdrive_path}" --todoist-project-id {todoist_project_id}`; if it fails, warn but do not roll back
+7. `uv run scripts/registry.py update "{id}" --name "{new_name}"` — errors if new name is a duplicate
+8. Confirm changes to user
 
 ---
 
@@ -178,7 +180,7 @@ H00001   | Kitchen Renovation          | In Progress  | 2026-03-15
 
 **Intent:** "show project {id}", "project details", "describe project"
 
-Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, plus derived folder paths and Todoist link (`https://app.todoist.com/app/project/{todoist_project_id}`).
+Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, plus derived folder paths, Todoist link (`https://app.todoist.com/app/project/{todoist_project_id}`), and Notion link (`https://www.notion.so/{notion_page_id_without_dashes}`).
 
 ---
 
@@ -243,12 +245,10 @@ Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, pl
    > Reply **yes** to confirm.
 4. Build old and new folder names using `registry.py kebab`
 5. Rename iCloud folder (old → new); if succeeds, rename Google Drive folder; if Google Drive fails, rename iCloud back and abort
-6. `uv run scripts/todoist.py update-project {todoist_project_id} --name "{new_id}-{name}"`; also update parent via Todoist REST API if needed
-7. Since work and home use separate Notion accounts, the page cannot be moved cross-account:
-   - `uv run scripts/notion.py create-page --context {target_context} --id {new_id} --name "{name}" --description "{desc}" --status "{status}" --todoist-url {todoist_url} --icloud-path "{new_icloud_path}" --gdrive-path "{new_gdrive_path}"` — captures new `notion_page_id`
-   - `uv run scripts/notion.py archive-page {old_notion_page_id} --context {old_context}`
-8. `uv run scripts/registry.py update "{old_id}" --new-id {new_id} --notion-id {notion_page_id}`
-9. Confirm to user with old and new IDs and new Notion URL
+6. `uv run scripts/todoist.py update-project {todoist_project_id} --name "{new_id} - {name}"`; also update parent via Todoist REST API if needed
+7. `uv run scripts/notion.py update-page {notion_page_id} --context {new_context} --id {new_id} --name "{name}" --icloud-path "{new_icloud_path}" --gdrive-path "{new_gdrive_path}" --todoist-project-id {todoist_project_id}`; if it fails, warn but do not roll back
+8. `uv run scripts/registry.py update "{old_id}" --new-id {new_id}`
+9. Confirm to user with old and new IDs and Notion URL
 
 ---
 
@@ -286,7 +286,7 @@ Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, pl
 
 **Steps:**
 1. Find project: `uv run scripts/registry.py find "{id_or_name}"` — if `notion_page_id` is already set, inform user and stop
-2. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "{status}" --todoist-url {todoist_url} --icloud-path "{icloud_path}" --gdrive-path "{gdrive_path}"` — captures `notion_page_id`
+2. `uv run scripts/notion.py create-page --context {context} --id {id} --name "{name}" --description "{desc}" --status "{status}" --todoist-project-id {todoist_project_id} --icloud-path "{icloud_path}" --gdrive-path "{gdrive_path}"` — captures `notion_page_id`
 3. `uv run scripts/registry.py update "{id}" --notion-id {notion_page_id}`
 4. Confirm to user with Notion URL
 
@@ -353,6 +353,9 @@ All scripts write errors as JSON to stderr: `{"error": "message"}`. When a scrip
 
 ## Folder Name Convention
 
-Pattern: `{id}-{kebab-case-name}` — lowercase, spaces to hyphens, strip special characters except hyphens
+Pattern: `{id} - {name}` — original casing preserved, only `/` and `:` stripped (illegal on macOS filesystems)
 
-Example: "Fraud Adjudication Agent" → `W00001-fraud-adjudication-agent`
+Example: "Fraud Adjudication Agent" → `W00001 - Fraud Adjudication Agent`
+Example: "Q&A Research" → `W00002 - Q&A Research`
+
+Project names containing `/` or `:` are rejected at creation time by `check-name`.

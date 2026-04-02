@@ -114,6 +114,14 @@ def main():
             print(f"✓ Directory: {path}")
 
     # 5. Resolve Todoist parent IDs
+    notion_token_env = config.get("notion", {}).get("api_key_env", "NOTION_API_TOKEN")
+    notion_token = os.environ.get(notion_token_env)
+    if not notion_token:
+        print(f"\n⚠ {notion_token_env} not set — Notion sync will be unavailable.")
+        print(f'  Set it in ~/.zshrc: export {notion_token_env}="your-token-here"')
+    else:
+        print(f"✓ {notion_token_env} is set")
+
     token = os.environ.get("TODOIST_API_TOKEN")
     if not token:
         print("\n⚠ TODOIST_API_TOKEN not set — skipping Todoist setup.")
@@ -146,11 +154,10 @@ def main():
     print(f"iCloud archive:   {config.get('icloud_archive_path', 'not set')}")
     print(f"GDrive projects:  {config['gdrive_projects_path']}")
     print(f"GDrive archive:   {config.get('gdrive_archive_path', 'not set')}")
-    if token:
-        print(f"\nAdd this to your ~/.zshrc to persist the token:")
-        print(f'  export TODOIST_API_TOKEN="{token}"')
-    else:
-        print(f"\nWhen ready, set TODOIST_API_TOKEN in ~/.zshrc and re-run setup.")
+    if not token:
+        print(f"\n⚠ When ready, set TODOIST_API_TOKEN in ~/.zshrc and re-run setup.")
+    if not notion_token:
+        print(f"⚠ When ready, set {notion_token_env} in ~/.zshrc and re-run setup.")
 
 
 if __name__ == "__main__":
