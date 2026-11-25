@@ -1,6 +1,8 @@
 # PARA Project Manager — Claude Code Skill
 
-A Claude Code skill for managing projects using the PARA method, with synchronized folders across iCloud Drive, Google Drive, and Todoist.
+A Claude Code skill for managing projects using the PARA method, with synchronized Obsidian notes, Google Drive folders, and Linear projects.
+
+Akiflow is not written by this skill. Use Akiflow's Linear integration to import issues from selected Linear projects.
 
 ## Installation
 
@@ -11,31 +13,21 @@ mkdir -p ~/.claude/skills/para-projects
 cp -r ./para-projects/* ~/.claude/skills/para-projects/
 ```
 
-### 2. Get your Todoist API token
+### 2. Get your Linear API key
 
-1. Go to https://app.todoist.com/app/settings/integrations/developer
-2. Copy the API token
+1. Go to https://linear.app/settings/account/security/api-keys/new
+2. Create a personal API key with permission to manage projects
 
-### 3. Set the environment variables
+### 3. Set the environment variable
 
 Add to your `~/.zshrc`:
 ```bash
-export TODOIST_API_TOKEN="your-token-here"
-export NOTION_API_KEY_WORK="your-work-notion-token"
-export NOTION_API_KEY_HOME="your-home-notion-token"
+export LINEAR_API_KEY="lin_api_..."
 ```
 
 Then reload: `source ~/.zshrc`
 
-To get Notion API keys: go to https://www.notion.so/my-integrations, create an integration per account, and copy the token. Then share each target database with its integration (open the database in Notion → ··· → Connections).
-
-### 4. Ensure Todoist parent projects exist
-
-In Todoist, make sure you have two top-level projects:
-- `💼 Work`
-- `🏡 Home`
-
-### 5. Run setup
+### 4. Run setup
 
 ```bash
 cd ~/.claude/skills/para-projects
@@ -43,10 +35,13 @@ uv run scripts/setup.py
 ```
 
 This will:
-- Create `~/.../iCloud Drive/.project-registry/` with config and registry
-- Resolve Todoist parent project IDs automatically
+- Ensure `~/.../iCloud Drive/.project-registry/` exists (does not wipe `registry.json`)
+- Merge Obsidian + Linear keys into `config.json`
+- Resolve Linear team IDs (single team → both work and home; multiple teams → print list for you to set)
+- Resolve Linear project status IDs for Not Started / In Progress / Done
+- Ensure Obsidian vault, Archive, and Google Drive project/archive folders exist
 
-### 6. Set default context per machine
+### 5. Set default context per machine
 
 Edit `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json`:
 - Personal Mac: `"default_context": "home"`
@@ -54,7 +49,9 @@ Edit `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.js
 
 Since config.json lives in iCloud, it syncs across devices. Override per-request by saying "create a home project" or "create a work project."
 
-### 7. Run tests (optional)
+If you have multiple Linear teams, set `linear.teams.work.id` and `linear.teams.home.id`, then re-run setup.
+
+### 6. Run tests (optional)
 
 ```bash
 cd ~/.claude/skills/para-projects
@@ -62,14 +59,13 @@ uv sync
 uv run pytest -v
 ```
 
-### 8. Set up folder structure (optional)
+### 7. Set up folder structure (optional)
 
-If starting fresh, let the skill create your PARA folders:
 ```
 > /para-projects setup folder structure
 ```
 
-After setup, update `icloud_projects_path`, `icloud_archive_path`, `gdrive_projects_path`, and `gdrive_archive_path` in `config.json` to point to the new folders.
+Ensures the Obsidian vault + Archive and Google Drive project/archive paths exist.
 
 ## Usage (in Claude Code)
 
@@ -96,9 +92,7 @@ This skill must be invoked explicitly using `/para-projects`:
 
 > /para-projects sync status
 
-> /para-projects sync project W00002 to todoist
-
-> /para-projects sync project W00002 to notion
+> /para-projects sync project W00002 to linear
 
 > /para-projects setup folder structure
 ```
@@ -110,10 +104,10 @@ This skill must be invoked explicitly using `/para-projects`:
 | Skill | `~/.claude/skills/para-projects/SKILL.md` |
 | Config | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json` |
 | Registry | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/registry.json` |
-| iCloud project folders | `~/Library/Mobile Documents/com~apple~CloudDocs/1 🎯 Projects/{id}-{name}/` |
-| iCloud archive | `~/Library/Mobile Documents/com~apple~CloudDocs/4 🗃️ Archive/Projects/{id}-{name}/` |
-| Google Drive project folders | `~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/1 🎯 Projects/{id}-{name}/` |
-| Google Drive archive | `~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/4 🗃️ Archive/Projects/{id}-{name}/` |
+| Obsidian project notes | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/{id} - {name}/` |
+| Obsidian archive | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/Archive/{id} - {name}/` |
+| Google Drive project folders | `~/Library/CloudStorage/GoogleDrive-.../My Drive/1 🎯 Projects/{id} - {name}/` |
+| Google Drive archive | `~/Library/CloudStorage/GoogleDrive-.../My Drive/4 🗃️ Archive/Projects/{id} - {name}/` |
 
 ## Project ID Format
 
@@ -124,8 +118,14 @@ Auto-incremented per context from the registry.
 
 ## Project Statuses
 
-| Status | Meaning |
-|--------|---------|
-| `Not Started` | Default on creation |
-| `In Progress` | Actively being worked on |
-| `Done` | Closed via the Close Project action |
+| Status | Meaning | Linear |
+|--------|---------|--------|
+| `Not Started` | Default on creation | planned / backlog status |
+| `In Progress` | Actively being worked on | started status |
+| `Done` | Closed via the Close Project action | completed status |
+
+Closing a project moves folders to archive and sets the Linear project to Done. It does **not** archive the Linear project or delete issues (so Akiflow can keep importing them).
+
+## Akiflow
+
+After creating a Linear project, select it in Akiflow → Settings → Integrations → Linear → Filter by Project if you want its issues in Akiflow. This skill does not create Linear issues and does not call Akiflow.

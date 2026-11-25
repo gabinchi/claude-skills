@@ -25,7 +25,6 @@ def run(*args, registry_dir=None, expect_error=False):
     import os
     env = os.environ.copy()
     if registry_dir:
-        # Patch the registry path by monkeypatching the module-level constant via env
         env["_PARA_REGISTRY_DIR_OVERRIDE"] = str(registry_dir)
 
     result = subprocess.run(
@@ -65,8 +64,8 @@ def reg_dir_with_projects(reg_dir):
             "created_at": "2026-04-01T10:00:00Z",
             "updated_at": "2026-04-01T10:00:00Z",
             "closed_at": None,
-            "todoist_project_id": "111",
-            "notion_page_id": "aaa",
+            "linear_project_id": "111",
+            "linear_url": "https://linear.app/p/111",
         },
         {
             "id": "W00002",
@@ -76,8 +75,8 @@ def reg_dir_with_projects(reg_dir):
             "created_at": "2026-04-02T10:00:00Z",
             "updated_at": "2026-04-02T10:00:00Z",
             "closed_at": None,
-            "todoist_project_id": "222",
-            "notion_page_id": "bbb",
+            "linear_project_id": "222",
+            "linear_url": "https://linear.app/p/222",
         },
         {
             "id": "H00001",
@@ -87,8 +86,8 @@ def reg_dir_with_projects(reg_dir):
             "created_at": "2026-03-15T10:00:00Z",
             "updated_at": "2026-03-15T10:00:00Z",
             "closed_at": None,
-            "todoist_project_id": "333",
-            "notion_page_id": "ccc",
+            "linear_project_id": "333",
+            "linear_url": "https://linear.app/p/333",
         },
         {
             "id": "W00003",
@@ -98,8 +97,8 @@ def reg_dir_with_projects(reg_dir):
             "created_at": "2026-01-01T10:00:00Z",
             "updated_at": "2026-03-01T10:00:00Z",
             "closed_at": "2026-03-01T10:00:00Z",
-            "todoist_project_id": "444",
-            "notion_page_id": "ddd",
+            "linear_project_id": "444",
+            "linear_url": "https://linear.app/p/444",
         },
     ]
     (reg_dir / "registry.json").write_text(json.dumps(projects))
@@ -152,11 +151,10 @@ class TestNextId:
         assert h == "H00002"
 
     def test_zero_pads_to_five_digits(self, reg_dir):
-        # Manually insert a project with a high number
         projects = [{
             "id": "W00099", "name": "X", "description": "d", "status": "Not Started",
             "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
-            "closed_at": None, "todoist_project_id": None, "notion_page_id": None,
+            "closed_at": None, "linear_project_id": None, "linear_url": None,
         }]
         (reg_dir / "registry.json").write_text(json.dumps(projects))
         result = run("next-id", "W")
@@ -164,7 +162,7 @@ class TestNextId:
 
 
 # ---------------------------------------------------------------------------
-# kebab
+# kebab / folder-name
 # ---------------------------------------------------------------------------
 
 class TestFolderName:
@@ -198,13 +196,14 @@ class TestAdd:
     def test_adds_project(self, reg_dir):
         result = run(
             "add", "--id", "W00001", "--name", "Test Project",
-            "--description", "A test", "--todoist-id", "999", "--notion-id", "xyz",
+            "--description", "A test", "--linear-id", "999",
+            "--linear-url", "https://linear.app/p/999",
         )
         assert result["id"] == "W00001"
         assert result["name"] == "Test Project"
         assert result["status"] == "Not Started"
-        assert result["todoist_project_id"] == "999"
-        assert result["notion_page_id"] == "xyz"
+        assert result["linear_project_id"] == "999"
+        assert result["linear_url"] == "https://linear.app/p/999"
         assert result["closed_at"] is None
 
     def test_persists_to_registry(self, reg_dir):
@@ -221,17 +220,16 @@ class TestAdd:
         assert "already exists" in error["error"]
 
     def test_allows_duplicate_name_if_existing_is_done(self, reg_dir_with_projects):
-        # "Old Closed Project" has status Done — should be allowed
         result = run(
             "add", "--id", "W00004", "--name", "Old Closed Project",
             "--description", "new version",
         )
         assert result["id"] == "W00004"
 
-    def test_null_todoist_and_notion_by_default(self, reg_dir):
+    def test_null_linear_by_default(self, reg_dir):
         result = run("add", "--id", "W00001", "--name", "X", "--description", "y")
-        assert result["todoist_project_id"] is None
-        assert result["notion_page_id"] is None
+        assert result["linear_project_id"] is None
+        assert result["linear_url"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -260,12 +258,24 @@ class TestFind:
         assert "Not found" in error["error"]
 
     def test_find_ambiguous(self, reg_dir_with_projects):
-        # "Project" matches both "Fraud Adjudication Agent" description and "Merchant Risk Model" — but search is name/desc only in find
-        # Add two projects with similar names to force ambiguity
         run("add", "--id", "W00010", "--name", "Risk Alpha", "--description", "d")
         run("add", "--id", "W00011", "--name", "Risk Beta", "--description", "d")
         error = run("find", "Risk", expect_error=True)
         assert "Ambiguous" in error["error"]
+
+    def test_find_normalizes_legacy_missing_linear(self, reg_dir):
+        projects = [{
+            "id": "W00001", "name": "Legacy", "description": "d",
+            "status": "Not Started",
+            "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+            "closed_at": None,
+            "todoist_project_id": "old",
+            "notion_page_id": "old",
+        }]
+        (reg_dir / "registry.json").write_text(json.dumps(projects))
+        result = run("find", "W00001")
+        assert result["linear_project_id"] is None
+        assert result["linear_url"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -285,13 +295,13 @@ class TestUpdate:
         result = run("update", "W00001", "--description", "New desc")
         assert result["description"] == "New desc"
 
-    def test_update_todoist_id(self, reg_dir_with_projects):
-        result = run("update", "W00001", "--todoist-id", "newid")
-        assert result["todoist_project_id"] == "newid"
+    def test_update_linear_id(self, reg_dir_with_projects):
+        result = run("update", "W00001", "--linear-id", "newid")
+        assert result["linear_project_id"] == "newid"
 
-    def test_update_notion_id(self, reg_dir_with_projects):
-        result = run("update", "W00001", "--notion-id", "newnotion")
-        assert result["notion_page_id"] == "newnotion"
+    def test_update_linear_url(self, reg_dir_with_projects):
+        result = run("update", "W00001", "--linear-url", "https://linear.app/p/new")
+        assert result["linear_url"] == "https://linear.app/p/new"
 
     def test_set_closed_at_now(self, reg_dir_with_projects):
         result = run("update", "W00001", "--closed-at", "now")
@@ -308,7 +318,7 @@ class TestUpdate:
         assert result["id"] == "H00010"
 
     def test_rejects_invalid_status(self, reg_dir_with_projects):
-        import subprocess, os
+        import os
         env = os.environ.copy()
         env["_PARA_REGISTRY_DIR_OVERRIDE"] = str(reg_dir_with_projects)
         result = subprocess.run(
@@ -395,7 +405,6 @@ class TestSearch:
         assert result == []
 
     def test_search_multiple_results(self, reg_dir_with_projects):
-        # "risk" matches W00002 by name and W00001 by description ("fraud" → add a risk keyword)
         run("add", "--id", "H00002", "--name", "Home Risk Audit", "--description", "risk assessment")
         result = run("search", "risk", "--json")
         assert len(result) >= 2

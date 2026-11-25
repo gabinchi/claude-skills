@@ -1,7 +1,7 @@
 """
 PARA Projects — Shared utilities.
 
-Imported by registry.py, todoist.py, notion.py, and setup.py.
+Imported by registry.py, linear.py, obsidian.py, and setup.py.
 """
 
 import json
@@ -27,8 +27,7 @@ REGISTRY_FILE = REGISTRY_DIR / "registry.json"
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-TODOIST_REST_BASE = "https://api.todoist.com/api/v1"
-TODOIST_SYNC_BASE = "https://api.todoist.com/sync/v9"
+LINEAR_API = "https://api.linear.app/graphql"
 
 
 def err(msg):
@@ -45,11 +44,6 @@ def load_config():
         return json.load(f)
 
 
-def unwrap_list(data):
-    """Unwrap an API response that may be a plain list or a dict wrapping one."""
-    if isinstance(data, list):
-        return data
-    for key in ("results", "projects", "tasks", "items"):
-        if key in data and isinstance(data[key], list):
-            return data[key]
-    return []
+def expand_path(path_str):
+    """Expand ~ in a config path string and return a Path."""
+    return Path(os.path.expanduser(path_str))

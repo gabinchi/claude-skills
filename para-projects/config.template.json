@@ -1,18 +1,19 @@
 {
   "default_context": "work",
-  "icloud_projects_path": "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/1 🎯 Projects",
-  "icloud_archive_path": "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/4 🗃️ Archive/Projects",
-  "gdrive_projects_path": "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/1 🎯 Projects",
-  "gdrive_archive_path": "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/4 🗃️ Archive/Projects",
-  "todoist": {
-    "parent_projects": {
-      "work": { "name": "1 🎯 Projects", "parent_name": "💼 Work", "id": "" },
-      "home": { "name": "1 🎯 Projects", "parent_name": "🏡 Home", "id": "" }
+  "obsidian_vault_path": "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects",
+  "obsidian_archive_path": "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/Archive",
+  "gdrive_projects_path": "~/Library/CloudStorage/GoogleDrive-gabinchi@gmail.com/My Drive/1 🎯 Projects",
+  "gdrive_archive_path": "~/Library/CloudStorage/GoogleDrive-gabinchi@gmail.com/My Drive/4 🗃️ Archive/Projects",
+  "linear": {
+    "api_key_env": "LINEAR_API_KEY",
+    "teams": {
+      "work": { "id": "", "name": "" },
+      "home": { "id": "", "name": "" }
+    },
+    "statuses": {
+      "Not Started": "",
+      "In Progress": "",
+      "Done": ""
     }
-  },
-  "notion": {
-    "database_id": "335eede4-2aca-8137-9f0f-f1ae8fb5c5d1",
-    "parent_page_id": "2d0eede42aca8092a65bd4635803480c",
-    "api_key_env": "NOTION_API_TOKEN"
   }
 }

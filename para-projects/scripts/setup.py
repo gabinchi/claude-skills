@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-PARA Projects — First-run setup script.
-Resolves Todoist parent project IDs and initializes directory structure.
+PARA Projects — First-run / upgrade setup script.
+Merges Obsidian + Linear config into an existing registry config,
+resolves Linear team and project-status IDs, and ensures folders exist.
 
 Usage:
-    export TODOIST_API_TOKEN="your-token-here"
+    export LINEAR_API_KEY="lin_api_..."
     python3 setup.py
 """
 
@@ -14,167 +15,221 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from utils import REGISTRY_DIR, CONFIG_PATH, REGISTRY_FILE, TODOIST_REST_BASE
+from utils import REGISTRY_DIR, CONFIG_PATH, REGISTRY_FILE, LINEAR_API, expand_path
 
-REGISTRY_PATH = REGISTRY_FILE  # alias for clarity in setup output
+REGISTRY_PATH = REGISTRY_FILE
 TEMPLATE_PATH = Path(__file__).parent.parent / "config.template.json"
 
-TODOIST_API_URL = f"{TODOIST_REST_BASE}/projects"
 
-
-def get_todoist_token():
-    token = os.environ.get("TODOIST_API_TOKEN")
-    if not token:
-        print("ERROR: TODOIST_API_TOKEN environment variable not set.")
-        print("Get your token from: https://app.todoist.com/app/settings/integrations/developer")
-        print('Then run: export TODOIST_API_TOKEN="your-token-here"')
+def load_template():
+    if not TEMPLATE_PATH.exists():
+        print(f"ERROR: config.template.json not found at {TEMPLATE_PATH}")
         sys.exit(1)
-    return token
-
-
-def fetch_todoist_projects(token):
-    req = urllib.request.Request(
-        TODOIST_API_URL,
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    try:
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read().decode())
-        # API v1 may return {"results": [...]} instead of a plain array
-        if isinstance(data, list):
-            return data
-        for key in ("results", "projects", "items"):
-            if key in data and isinstance(data[key], list):
-                return data[key]
-        print(f"⚠ Unexpected Todoist response structure: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-        return []
-    except urllib.error.HTTPError as e:
-        print(f"⚠ Todoist API error: HTTP {e.code} — {e.reason}")
-        if e.code == 401:
-            print("  Token may be invalid or expired. Check TODOIST_API_TOKEN.")
-        elif e.code == 410:
-            print("  Endpoint gone. The Todoist API may have changed.")
-        print("  Skipping Todoist setup — add parent project IDs to config.json manually.")
-        return []
-    except urllib.error.URLError as e:
-        print(f"⚠ Could not reach Todoist: {e.reason}. Skipping Todoist setup.")
-        return []
-
-
-def resolve_parent_ids(projects, config):
-    # Build id→project map for hierarchical lookup
-    by_id = {str(p["id"]): p for p in projects}
-    # Build name→id map for top-level lookup
-    by_name = {}
-    for p in projects:
-        by_name.setdefault(p["name"], []).append(str(p["id"]))
-
-    found = {}
-    for key, entry in config.get("todoist", {}).get("parent_projects", {}).items():
-        name = entry.get("name")
-        parent_name = entry.get("parent_name")
-        if parent_name:
-            # Two-level: find child named `name` whose parent is named `parent_name`
-            parent_ids = set(by_name.get(parent_name, []))
-            for p in projects:
-                if p["name"] == name and str(p.get("parent_id", "")) in parent_ids:
-                    found[key] = {"name": p["name"], "parent_name": parent_name, "id": str(p["id"])}
-                    break
-        elif name:
-            # Flat lookup (fallback)
-            for pid in by_name.get(name, []):
-                found[key] = {"name": name, "id": pid}
-                break
-    return found
+    with open(TEMPLATE_PATH) as f:
+        return json.load(f)
 
 
 def load_or_create_config():
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
             return json.load(f)
+    return load_template()
 
-    if not TEMPLATE_PATH.exists():
-        print(f"ERROR: config.template.json not found at {TEMPLATE_PATH}")
-        sys.exit(1)
 
-    with open(TEMPLATE_PATH) as f:
-        return json.load(f)
+def deep_merge_defaults(config, template):
+    """Add missing keys from template without overwriting existing values.
+    Does not rewrite registry.json. Leaves obsolete keys (todoist, notion, icloud_*) in place.
+    """
+    for key, value in template.items():
+        if key not in config:
+            config[key] = value
+        elif isinstance(value, dict) and isinstance(config.get(key), dict):
+            deep_merge_defaults(config[key], value)
+    return config
+
+
+def get_linear_token(config):
+    env_name = config.get("linear", {}).get("api_key_env", "LINEAR_API_KEY")
+    return os.environ.get(env_name), env_name
+
+
+def linear_graphql(token, query, variables=None):
+    body = {"query": query}
+    if variables is not None:
+        body["variables"] = variables
+    req = urllib.request.Request(
+        LINEAR_API,
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": token,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        payload = json.loads(resp.read().decode())
+    if "errors" in payload:
+        messages = "; ".join(e.get("message", str(e)) for e in payload["errors"])
+        raise RuntimeError(messages)
+    return payload.get("data", {})
+
+
+def resolve_linear_teams(token, config):
+    data = linear_graphql(
+        token,
+        """
+        query {
+          teams {
+            nodes { id name key }
+          }
+        }
+        """,
+    )
+    teams = data.get("teams", {}).get("nodes", [])
+    if not teams:
+        print("⚠ No Linear teams found for this API key.")
+        return False
+
+    linear = config.setdefault("linear", {})
+    team_cfg = linear.setdefault("teams", {})
+    work = team_cfg.setdefault("work", {"id": "", "name": ""})
+    home = team_cfg.setdefault("home", {"id": "", "name": ""})
+
+    if len(teams) == 1:
+        t = teams[0]
+        for ctx in ("work", "home"):
+            team_cfg[ctx] = {"id": t["id"], "name": t["name"]}
+        print(f'✓ Single Linear team "{t["name"]}" → work and home')
+        return True
+
+    # Multiple teams: fill only if ids already set; otherwise print and stop filling
+    if work.get("id") and home.get("id"):
+        print(f'✓ Linear work team: {work.get("name") or work["id"]}')
+        print(f'✓ Linear home team: {home.get("name") or home["id"]}')
+        return True
+
+    print("\nMultiple Linear teams found. Set linear.teams.work.id and")
+    print("linear.teams.home.id in config.json, then re-run setup:\n")
+    for t in teams:
+        print(f'  {t["id"]}  {t.get("key", ""):<8}  {t["name"]}')
+    print()
+    return False
+
+
+def pick_status_id(statuses, preferred_types):
+    by_type = {}
+    for s in statuses:
+        by_type.setdefault(s.get("type"), []).append(s)
+    for t in preferred_types:
+        if t in by_type:
+            return by_type[t][0]["id"], by_type[t][0]["name"]
+    if statuses:
+        return statuses[0]["id"], statuses[0]["name"]
+    return "", ""
+
+
+def resolve_linear_statuses(token, config):
+    data = linear_graphql(
+        token,
+        """
+        query {
+          projectStatuses {
+            nodes { id name type }
+          }
+        }
+        """,
+    )
+    statuses = data.get("projectStatuses", {}).get("nodes", [])
+    if not statuses:
+        print("⚠ No Linear project statuses found.")
+        return
+
+    linear = config.setdefault("linear", {})
+    status_map = linear.setdefault("statuses", {})
+
+    mapping = {
+        "Not Started": ["planned", "backlog"],
+        "In Progress": ["started"],
+        "Done": ["completed"],
+    }
+    for para_status, types in mapping.items():
+        sid, sname = pick_status_id(statuses, types)
+        status_map[para_status] = sid
+        print(f'✓ Linear status "{para_status}" → {sname} ({sid})')
+
+
+def ensure_dirs(config):
+    for key in [
+        "obsidian_vault_path",
+        "obsidian_archive_path",
+        "gdrive_projects_path",
+        "gdrive_archive_path",
+    ]:
+        path_str = config.get(key)
+        if not path_str:
+            print(f"⚠ {key} not set in config")
+            continue
+        path = expand_path(path_str)
+        if path.exists():
+            print(f"✓ Directory exists: {path}")
+        else:
+            path.mkdir(parents=True, exist_ok=True)
+            print(f"✓ Created directory: {path}")
 
 
 def main():
     print("=== PARA Projects Setup ===\n")
 
-    # 1. Create registry directory
     REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
     print(f"✓ Registry directory: {REGISTRY_DIR}")
 
-    # 2. Initialize empty registry if needed
     if not REGISTRY_PATH.exists():
         with open(REGISTRY_PATH, "w") as f:
             json.dump([], f, indent=2)
         print(f"✓ Created empty registry: {REGISTRY_PATH}")
     else:
-        print(f"✓ Registry exists: {REGISTRY_PATH}")
+        print(f"✓ Registry exists (not rewritten): {REGISTRY_PATH}")
 
-    # 3. Load or create config
+    template = load_template()
     config = load_or_create_config()
+    deep_merge_defaults(config, template)
 
-    # 4. Create project and archive directories
-    for key in ["icloud_projects_path", "icloud_archive_path", "gdrive_projects_path", "gdrive_archive_path"]:
-        if key in config:
-            path = Path(os.path.expanduser(config[key]))
-            path.mkdir(parents=True, exist_ok=True)
-            print(f"✓ Directory: {path}")
+    # Preserve default_context if already set
+    if "default_context" not in config:
+        config["default_context"] = template.get("default_context", "work")
 
-    # 5. Resolve Todoist parent IDs
-    notion_token_env = config.get("notion", {}).get("api_key_env", "NOTION_API_TOKEN")
-    notion_token = os.environ.get(notion_token_env)
-    if not notion_token:
-        print(f"\n⚠ {notion_token_env} not set — Notion sync will be unavailable.")
-        print(f'  Set it in ~/.zshrc: export {notion_token_env}="your-token-here"')
-    else:
-        print(f"✓ {notion_token_env} is set")
+    ensure_dirs(config)
 
-    token = os.environ.get("TODOIST_API_TOKEN")
+    token, env_name = get_linear_token(config)
     if not token:
-        print("\n⚠ TODOIST_API_TOKEN not set — skipping Todoist setup.")
-        print("  Add parent project IDs to config.json manually when ready.")
-        parents = {}
+        print(f"\n⚠ {env_name} not set — Linear sync will be unavailable.")
+        print(f'  Set it in ~/.zshrc: export {env_name}="lin_api_..."')
+        print("  Create a key at: https://linear.app/settings/account/security/api-keys/new")
     else:
-        print("\nFetching Todoist projects...")
-        projects = fetch_todoist_projects(token)
-        parents = resolve_parent_ids(projects, config)
+        print(f"✓ {env_name} is set")
+        try:
+            print("\nResolving Linear teams...")
+            resolve_linear_teams(token, config)
+            print("\nResolving Linear project statuses...")
+            resolve_linear_statuses(token, config)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            print(f"⚠ Linear API error: HTTP {e.code} — {body}")
+        except Exception as e:
+            print(f"⚠ Linear setup failed: {e}")
 
-    if parents:
-        for key in ["work", "home"]:
-            if key in parents:
-                config["todoist"]["parent_projects"][key] = parents[key]
-                p = parents[key]
-                path = f"{p['parent_name']}/{p['name']}" if p.get("parent_name") else p["name"]
-                print(f'✓ Found "{path}" → ID: {p["id"]}')
-            else:
-                ctx_cfg = config["todoist"]["parent_projects"].get(key, {})
-                parent_name = ctx_cfg.get("parent_name", "")
-                child_name = ctx_cfg.get("name", "1 🎯 Projects")
-                path = f"{parent_name}/{child_name}" if parent_name else child_name
-                print(f'⚠ Could not find "{path}" in Todoist. Create it first, then re-run setup.')
-
-    # 6. Write config
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
     print(f"\n✓ Config saved: {CONFIG_PATH}")
 
-    # 7. Summary
     print("\n=== Setup Complete ===")
-    print(f"Default context:  {config['default_context']}")
-    print(f"iCloud projects:  {config['icloud_projects_path']}")
-    print(f"iCloud archive:   {config.get('icloud_archive_path', 'not set')}")
-    print(f"GDrive projects:  {config['gdrive_projects_path']}")
-    print(f"GDrive archive:   {config.get('gdrive_archive_path', 'not set')}")
+    print(f"Default context:     {config.get('default_context')}")
+    print(f"Obsidian vault:      {config.get('obsidian_vault_path')}")
+    print(f"Obsidian archive:    {config.get('obsidian_archive_path')}")
+    print(f"GDrive projects:     {config.get('gdrive_projects_path')}")
+    print(f"GDrive archive:      {config.get('gdrive_archive_path')}")
     if not token:
-        print(f"\n⚠ When ready, set TODOIST_API_TOKEN in ~/.zshrc and re-run setup.")
-    if not notion_token:
-        print(f"⚠ When ready, set {notion_token_env} in ~/.zshrc and re-run setup.")
+        print(f"\n⚠ When ready, set {env_name} in ~/.zshrc and re-run setup.")
 
 
 if __name__ == "__main__":

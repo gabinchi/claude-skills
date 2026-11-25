@@ -4,25 +4,24 @@ PARA Projects — Registry CLI.
 
 Usage:
     registry.py next-id <W|H>
-    registry.py add --id ID --name NAME --description DESC [--todoist-id ID]
+    registry.py add --id ID --name NAME --description DESC [--linear-id ID] [--linear-url URL]
     registry.py find <id_or_name>
     registry.py update <id_or_name> [--name NAME] [--status STATUS] [--description DESC]
-                                    [--todoist-id ID] [--closed-at now|ISO] [--clear-closed-at]
+                                    [--linear-id ID] [--linear-url URL]
+                                    [--closed-at now|ISO] [--clear-closed-at]
                                     [--new-id ID]
     registry.py list [--context work|home] [--status STATUS] [--sort created_at|status|id]
                      [--include-done] [--json]
     registry.py search <keyword> [--json]
-    registry.py kebab <name>
+    registry.py folder-name <name>
 """
 
 import argparse
 import json
 import os
 import re
-import sys
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 
 from utils import REGISTRY_DIR, REGISTRY_FILE, err
 
@@ -152,8 +151,8 @@ def cmd_add(args):
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "closed_at": None,
-        "todoist_project_id": args.todoist_id,
-        "notion_page_id": args.notion_id,
+        "linear_project_id": args.linear_id,
+        "linear_url": args.linear_url,
     }
     projects.append(entry)
     save(projects)
@@ -165,6 +164,9 @@ def cmd_find(args):
     project, error = find_one(projects, args.id_or_name)
     if error:
         err(error)
+    # Normalize missing Linear fields on legacy records
+    project.setdefault("linear_project_id", None)
+    project.setdefault("linear_url", None)
     print(json.dumps(project, indent=2))
 
 
@@ -188,11 +190,11 @@ def cmd_update(args):
     if args.description is not None:
         project["description"] = args.description
 
-    if args.todoist_id is not None:
-        project["todoist_project_id"] = args.todoist_id
+    if args.linear_id is not None:
+        project["linear_project_id"] = args.linear_id
 
-    if args.notion_id is not None:
-        project["notion_page_id"] = args.notion_id
+    if args.linear_url is not None:
+        project["linear_url"] = args.linear_url
 
     if args.closed_at is not None:
         project["closed_at"] = now_iso() if args.closed_at == "now" else args.closed_at
@@ -204,6 +206,8 @@ def cmd_update(args):
         project["id"] = args.new_id
 
     project["updated_at"] = now_iso()
+    project.setdefault("linear_project_id", None)
+    project.setdefault("linear_url", None)
     save(projects)
     print(json.dumps(project, indent=2))
 
@@ -222,6 +226,10 @@ def cmd_list(args):
     sort_key = args.sort or "created_at"
     projects.sort(key=lambda p: p.get(sort_key, ""))
 
+    for p in projects:
+        p.setdefault("linear_project_id", None)
+        p.setdefault("linear_url", None)
+
     if args.json:
         print(json.dumps(projects, indent=2))
     else:
@@ -237,6 +245,10 @@ def cmd_search(args):
             results.append({**p, "_match": "name"})
         elif keyword in p.get("description", "").lower():
             results.append({**p, "_match": "description"})
+
+    for p in results:
+        p.setdefault("linear_project_id", None)
+        p.setdefault("linear_url", None)
 
     if args.json:
         print(json.dumps(results, indent=2))
@@ -277,8 +289,8 @@ def main():
     p.add_argument("--id", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--description", required=True)
-    p.add_argument("--todoist-id", default=None, dest="todoist_id")
-    p.add_argument("--notion-id", default=None, dest="notion_id")
+    p.add_argument("--linear-id", default=None, dest="linear_id")
+    p.add_argument("--linear-url", default=None, dest="linear_url")
     p.set_defaults(func=cmd_add)
 
     # find
@@ -292,8 +304,8 @@ def main():
     p.add_argument("--name")
     p.add_argument("--status", choices=VALID_STATUSES)
     p.add_argument("--description")
-    p.add_argument("--todoist-id", dest="todoist_id")
-    p.add_argument("--notion-id", dest="notion_id")
+    p.add_argument("--linear-id", dest="linear_id")
+    p.add_argument("--linear-url", dest="linear_url")
     p.add_argument("--closed-at", dest="closed_at", help="ISO timestamp or 'now'")
     p.add_argument("--clear-closed-at", action="store_true", dest="clear_closed_at")
     p.add_argument("--new-id", dest="new_id", help="Reassign the project ID (used by Move)")
