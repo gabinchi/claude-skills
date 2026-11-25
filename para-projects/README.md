@@ -104,10 +104,10 @@ This skill must be invoked explicitly using `/para-projects`:
 | Skill | `~/.claude/skills/para-projects/SKILL.md` |
 | Config | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/config.json` |
 | Registry | `~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/registry.json` |
-| Obsidian project notes | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/{id} - {name}/` |
-| Obsidian archive | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/Archive/{id} - {name}/` |
-| Google Drive project folders | `~/Library/CloudStorage/GoogleDrive-.../My Drive/1 🎯 Projects/{id} - {name}/` |
-| Google Drive archive | `~/Library/CloudStorage/GoogleDrive-.../My Drive/4 🗃️ Archive/Projects/{id} - {name}/` |
+| Obsidian project notes | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/{id}_{slug}/` |
+| Obsidian archive | `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/projects/Archive/{id}_{slug}/` |
+| Google Drive project folders | `~/Library/CloudStorage/GoogleDrive-.../My Drive/1 🎯 Projects/{id}_{slug}/` |
+| Google Drive archive | `~/Library/CloudStorage/GoogleDrive-.../My Drive/4 🗃️ Archive/Projects/{id}_{slug}/` |
 
 ## Project ID Format
 

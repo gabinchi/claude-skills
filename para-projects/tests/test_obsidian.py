@@ -69,11 +69,11 @@ class TestCreate:
             "--context", "home",
             registry_dir=vault_env["registry_dir"],
         )
-        folder = vault_env["vault"] / "H00001 - Kitchen Renovation"
-        note = folder / "H00001 - Kitchen Renovation.md"
+        folder = vault_env["vault"] / "H00001_kitchen_renovation"
+        note = folder / "H00001_kitchen_renovation.md"
         assert folder.is_dir()
         assert note.is_file()
-        assert result["folder_name"] == "H00001 - Kitchen Renovation"
+        assert result["folder_name"] == "H00001_kitchen_renovation"
         text = note.read_text()
         assert "id: H00001" in text
         assert "name: Kitchen Renovation" in text
@@ -89,19 +89,17 @@ class TestCreate:
         error = run(*args, registry_dir=vault_env["registry_dir"], expect_error=True)
         assert "already exists" in error["error"]
 
-    def test_strips_illegal_chars_in_folder(self, vault_env):
-        # Name with chars that would be illegal if not stripped — create uses sanitize
-        # check-name rejects / and : at registry level; sanitize still strips if passed
+    def test_folder_name_has_no_spaces_or_punctuation(self, vault_env):
         result = run(
             "create",
             "--id", "W00001",
-            "--name", "Q&A Research",
+            "--name", "Q&A Research - Phase 2",
             "--description", "notes",
             "--context", "work",
             registry_dir=vault_env["registry_dir"],
         )
-        assert (vault_env["vault"] / "W00001 - Q&A Research").is_dir()
-        assert result["folder_name"] == "W00001 - Q&A Research"
+        assert (vault_env["vault"] / "W00001_q_a_research_phase_2").is_dir()
+        assert result["folder_name"] == "W00001_q_a_research_phase_2"
 
 
 class TestRename:
@@ -112,7 +110,7 @@ class TestRename:
             registry_dir=vault_env["registry_dir"],
         )
         # Leave an extra file that should survive
-        extra = vault_env["vault"] / "H00001 - Old Name" / "scratch.txt"
+        extra = vault_env["vault"] / "H00001_old_name" / "scratch.txt"
         extra.write_text("keep me")
 
         result = run(
@@ -122,15 +120,16 @@ class TestRename:
             "--new-name", "New Name",
             registry_dir=vault_env["registry_dir"],
         )
-        new_dir = vault_env["vault"] / "H00001 - New Name"
+        new_dir = vault_env["vault"] / "H00001_new_name"
         assert new_dir.is_dir()
-        assert not (vault_env["vault"] / "H00001 - Old Name").exists()
-        assert (new_dir / "H00001 - New Name.md").is_file()
+        assert not (vault_env["vault"] / "H00001_old_name").exists()
+        assert (new_dir / "H00001_new_name.md").is_file()
+        assert not (new_dir / "H00001_old_name.md").exists()
         assert (new_dir / "scratch.txt").read_text() == "keep me"
-        text = (new_dir / "H00001 - New Name.md").read_text()
+        text = (new_dir / "H00001_new_name.md").read_text()
         assert "name: New Name" in text
         assert "body text" in text
-        assert result["folder_name"] == "H00001 - New Name"
+        assert result["folder_name"] == "H00001_new_name"
 
     def test_rename_with_new_id(self, vault_env):
         run(
@@ -146,12 +145,52 @@ class TestRename:
             "--new-id", "W00005",
             registry_dir=vault_env["registry_dir"],
         )
-        new_dir = vault_env["vault"] / "W00005 - Move Me"
+        new_dir = vault_env["vault"] / "W00005_move_me"
         assert new_dir.is_dir()
-        text = (new_dir / "W00005 - Move Me.md").read_text()
+        text = (new_dir / "W00005_move_me.md").read_text()
         assert "id: W00005" in text
         assert "context: work" in text
         assert result["id"] == "W00005"
+
+    def test_rename_without_project_note_keeps_other_notes(self, vault_env):
+        folder = vault_env["vault"] / "W00001_loose_notes"
+        folder.mkdir()
+        other = folder / "Meeting with Greg.md"
+        other.write_text("# Greg\n\nnotes")
+
+        run(
+            "rename", "--id", "W00001",
+            "--old-name", "Loose Notes", "--new-name", "Renamed",
+            registry_dir=vault_env["registry_dir"],
+        )
+        new_dir = vault_env["vault"] / "W00001_renamed"
+        assert (new_dir / "Meeting with Greg.md").read_text() == "# Greg\n\nnotes"
+        assert sorted(p.name for p in new_dir.iterdir()) == ["Meeting with Greg.md"]
+
+    def test_migrates_legacy_folder_name(self, vault_env):
+        legacy = vault_env["vault"] / "W00001 - Go to Market Plan"
+        legacy.mkdir()
+        (legacy / "W00001 - Go to Market Plan.md").write_text(
+            "---\nid: W00001\nname: Go to Market Plan\nstatus: In Progress\ncontext: work\n"
+            "linear_id: lin-1\nlinear_url:\n---\n\nThe plan\n"
+        )
+        (legacy / "Getting out There.md").write_text("keep")
+
+        run(
+            "rename", "--id", "W00001",
+            "--old-name", "Go to Market Plan", "--new-name", "Go to Market Plan",
+            registry_dir=vault_env["registry_dir"],
+        )
+        new_dir = vault_env["vault"] / "W00001_go_to_market_plan"
+        assert not legacy.exists()
+        assert sorted(p.name for p in new_dir.iterdir()) == [
+            "Getting out There.md", "W00001_go_to_market_plan.md",
+        ]
+        text = (new_dir / "W00001_go_to_market_plan.md").read_text()
+        assert "status: In Progress" in text
+        assert "linear_id: lin-1" in text
+        assert "The plan" in text
+        assert (new_dir / "Getting out There.md").read_text() == "keep"
 
 
 class TestUpdate:
@@ -171,10 +210,59 @@ class TestUpdate:
             registry_dir=vault_env["registry_dir"],
         )
         assert result["status"] == "In Progress"
-        text = (vault_env["vault"] / "H00001 - Status Proj" / "H00001 - Status Proj.md").read_text()
+        assert result["created"] is False
+        text = (vault_env["vault"] / "H00001_status_proj" / "H00001_status_proj.md").read_text()
         assert "status: In Progress" in text
         assert "linear_id: lin-1" in text
         assert "https://linear.app/p/lin-1" in text
+
+    def test_update_without_project_note_creates_one_and_keeps_other_notes(self, vault_env):
+        # Regression: update used to pick any .md as the project note, rewrite
+        # it under the project-note name and delete the original.
+        folder = vault_env["vault"] / "W00001_go_to_market_plan"
+        folder.mkdir()
+        other = folder / "Getting out There.md"
+        original = "# Getting out there\n\nNotes I care about\n"
+        other.write_text(original)
+
+        result = run(
+            "update", "--id", "W00001", "--name", "Go to Market Plan",
+            "--status", "In Progress",
+            registry_dir=vault_env["registry_dir"],
+        )
+        assert result["created"] is True
+        assert other.read_text() == original
+        note = folder / "W00001_go_to_market_plan.md"
+        text = note.read_text()
+        assert "status: In Progress" in text
+        assert "Notes I care about" not in text
+
+    def test_update_without_project_note_requires_name(self, vault_env):
+        folder = vault_env["vault"] / "W00001_x"
+        folder.mkdir()
+        (folder / "other.md").write_text("keep")
+        error = run(
+            "update", "--id", "W00001", "--status", "Done",
+            registry_dir=vault_env["registry_dir"], expect_error=True,
+        )
+        assert "--name" in error["error"]
+        assert (folder / "other.md").read_text() == "keep"
+
+    def test_update_finds_legacy_note(self, vault_env):
+        legacy = vault_env["vault"] / "H00001 - Old Style"
+        legacy.mkdir()
+        (legacy / "H00001 - Old Style.md").write_text(
+            "---\nid: H00001\nname: Old Style\nstatus: Not Started\ncontext: home\n"
+            "linear_id:\nlinear_url:\n---\n\nbody\n"
+        )
+        result = run(
+            "update", "--id", "H00001", "--status", "Done",
+            registry_dir=vault_env["registry_dir"],
+        )
+        assert result["created"] is False
+        notes = sorted(p.name for p in legacy.iterdir())
+        assert notes == ["H00001_old_style.md"]
+        assert "status: Done" in (legacy / "H00001_old_style.md").read_text()
 
 
 class TestArchiveRestore:
@@ -190,9 +278,9 @@ class TestArchiveRestore:
             "--name", "Archive Me",
             registry_dir=vault_env["registry_dir"],
         )
-        dest = vault_env["archive"] / "H00001 - Archive Me"
+        dest = vault_env["archive"] / "H00001_archive_me"
         assert dest.is_dir()
-        assert not (vault_env["vault"] / "H00001 - Archive Me").exists()
+        assert not (vault_env["vault"] / "H00001_archive_me").exists()
         assert archived["path"] == str(dest)
 
         restored = run(
@@ -201,10 +289,19 @@ class TestArchiveRestore:
             "--name", "Archive Me",
             registry_dir=vault_env["registry_dir"],
         )
-        back = vault_env["vault"] / "H00001 - Archive Me"
+        back = vault_env["vault"] / "H00001_archive_me"
         assert back.is_dir()
         assert not dest.exists()
         assert restored["path"] == str(back)
+
+    def test_archive_legacy_folder(self, vault_env):
+        legacy = vault_env["vault"] / "H00002 - Legacy"
+        legacy.mkdir()
+        run(
+            "archive", "--id", "H00002", "--name", "Legacy",
+            registry_dir=vault_env["registry_dir"],
+        )
+        assert (vault_env["archive"] / "H00002 - Legacy").is_dir()
 
     def test_archive_missing_errors(self, vault_env):
         error = run(
@@ -213,5 +310,13 @@ class TestArchiveRestore:
             "--name", "Nope",
             registry_dir=vault_env["registry_dir"],
             expect_error=True,
+        )
+        assert "not found" in error["error"].lower()
+
+    def test_id_prefix_does_not_match_longer_id(self, vault_env):
+        (vault_env["vault"] / "H000010_other").mkdir()
+        error = run(
+            "archive", "--id", "H00001", "--name", "Nope",
+            registry_dir=vault_env["registry_dir"], expect_error=True,
         )
         assert "not found" in error["error"].lower()

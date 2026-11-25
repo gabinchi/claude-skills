@@ -16,21 +16,15 @@ Config:   ~/Library/Mobile Documents/com~apple~CloudDocs/.project-registry/confi
 
 import argparse
 import json
-import re
 import shutil
 from pathlib import Path
 
-from utils import err, load_config, expand_path
-
-ILLEGAL_CHARS = re.compile(r"[/:]")
+from utils import err, load_config, expand_path, folder_name
 
 
-def sanitize(name):
-    return ILLEGAL_CHARS.sub("", name).strip()
-
-
-def folder_name(project_id, name):
-    return f"{project_id} - {sanitize(name)}"
+def id_prefixes(project_id):
+    """Folder/note name prefixes for a project: current '{id}_' and legacy '{id} - '."""
+    return (f"{project_id}_", f"{project_id} - ")
 
 
 def note_filename(project_id, name):
@@ -96,11 +90,11 @@ def parse_frontmatter(text):
 
 
 def find_project_dir(root, project_id):
-    """Find a project folder under root that starts with '{id} - '."""
+    """Find a project folder under root named '{id}_...' (or legacy '{id} - ...')."""
     if not root.exists():
         return None
-    prefix = f"{project_id} - "
-    matches = [p for p in root.iterdir() if p.is_dir() and p.name.startswith(prefix)]
+    prefixes = id_prefixes(project_id)
+    matches = [p for p in root.iterdir() if p.is_dir() and p.name.startswith(prefixes)]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -109,15 +103,16 @@ def find_project_dir(root, project_id):
 
 
 def find_note(project_dir, project_id):
-    """Find the project note inside the folder (prefer matching id prefix)."""
-    notes = list(project_dir.glob(f"{project_id} - *.md"))
-    if len(notes) == 1:
-        return notes[0]
-    if notes:
-        return notes[0]
-    # Fallback: any .md
-    any_md = list(project_dir.glob("*.md"))
-    return any_md[0] if any_md else None
+    """Find the project note '{id}_....md' (or legacy '{id} - ....md') inside the folder.
+
+    Returns None when there is no project note. Never falls back to another
+    note: callers rewrite and delete the note they get back.
+    """
+    prefixes = id_prefixes(project_id)
+    notes = sorted(
+        p for p in project_dir.glob("*.md") if p.is_file() and p.name.startswith(prefixes)
+    )
+    return notes[0] if notes else None
 
 
 # ---------------------------------------------------------------------------
@@ -222,11 +217,12 @@ def cmd_update(args):
     if project_dir is None:
         err(f"Obsidian folder not found for {args.id}")
 
+    # No project note yet (e.g. a folder of loose notes): create one and leave
+    # the other files alone.
     note = find_note(project_dir, args.id)
-    if note is None:
-        err(f"Obsidian note not found in {project_dir}")
-
-    meta, body = parse_frontmatter(note.read_text(encoding="utf-8"))
+    if note is None and not args.name:
+        err(f"No project note in {project_dir}; pass --name to create one")
+    meta, body = parse_frontmatter(note.read_text(encoding="utf-8")) if note else ({}, "")
     name = args.name or meta.get("name") or ""
     status = args.status if args.status is not None else (meta.get("status") or "Not Started")
     context = meta.get("context") or ("work" if args.id.upper().startswith("W") else "home")
@@ -246,13 +242,14 @@ def cmd_update(args):
         linear_id=linear_id,
         linear_url=linear_url,
     )
-    if target_note != note and note.exists():
+    if note is not None and target_note != note and note.exists():
         note.unlink()
 
     print(json.dumps({
         "path": str(project_dir),
         "note": str(target_note),
         "status": status,
+        "created": note is None,
     }))
 
 

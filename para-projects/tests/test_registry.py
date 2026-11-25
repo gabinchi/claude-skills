@@ -162,30 +162,37 @@ class TestNextId:
 
 
 # ---------------------------------------------------------------------------
-# kebab / folder-name
+# folder-name (slug)
 # ---------------------------------------------------------------------------
 
 class TestFolderName:
     def test_basic(self, reg_dir):
-        assert run("folder-name", "Fraud Adjudication Agent") == "Fraud Adjudication Agent"
+        assert run("folder-name", "Fraud Adjudication Agent") == "fraud_adjudication_agent"
 
-    def test_preserves_casing(self, reg_dir):
-        assert run("folder-name", "My Project") == "My Project"
+    def test_lowercases(self, reg_dir):
+        assert run("folder-name", "My PROJECT") == "my_project"
 
-    def test_preserves_special_chars(self, reg_dir):
-        assert run("folder-name", "Q&A Research") == "Q&A Research"
+    def test_collapses_punctuation_runs(self, reg_dir):
+        assert run("folder-name", "The Practice - Go to Market Plan") == "the_practice_go_to_market_plan"
 
-    def test_strips_slash(self, reg_dir):
-        assert run("folder-name", "Work/Home") == "WorkHome"
+    def test_drops_ampersand(self, reg_dir):
+        assert run("folder-name", "Fraud & AML Rule Portfolio Review") == "fraud_aml_rule_portfolio_review"
 
-    def test_strips_colon(self, reg_dir):
-        assert run("folder-name", "Phase: Alpha") == "Phase Alpha"
+    def test_slash_and_colon_become_separators(self, reg_dir):
+        assert run("folder-name", "A/B: Test") == "a_b_test"
 
-    def test_strips_both(self, reg_dir):
-        assert run("folder-name", "A/B: Test") == "AB Test"
+    def test_strips_leading_and_trailing_separators(self, reg_dir):
+        assert run("folder-name", "  (Draft) Plan!  ") == "draft_plan"
+
+    def test_accents_folded_to_ascii(self, reg_dir):
+        assert run("folder-name", "Inés Café") == "ines_cafe"
 
     def test_numbers_preserved(self, reg_dir):
-        assert run("folder-name", "Project 42") == "Project 42"
+        assert run("folder-name", "Project 42") == "project_42"
+
+    def test_check_name_rejects_name_without_letters_or_digits(self, reg_dir):
+        error = run("check-name", "- & -", expect_error=True)
+        assert "letter or digit" in error["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +319,10 @@ class TestUpdate:
         run("update", "W00003", "--closed-at", "now")
         result = run("update", "W00003", "--clear-closed-at")
         assert result["closed_at"] is None
+
+    def test_set_created_at(self, reg_dir_with_projects):
+        result = run("update", "W00001", "--created-at", "2025-02-28T00:00:00Z")
+        assert result["created_at"] == "2025-02-28T00:00:00Z"
 
     def test_update_new_id(self, reg_dir_with_projects):
         result = run("update", "W00001", "--new-id", "H00010")

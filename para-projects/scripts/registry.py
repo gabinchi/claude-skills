@@ -9,6 +9,7 @@ Usage:
     registry.py update <id_or_name> [--name NAME] [--status STATUS] [--description DESC]
                                     [--linear-id ID] [--linear-url URL]
                                     [--closed-at now|ISO] [--clear-closed-at]
+                                    [--created-at ISO]
                                     [--new-id ID]
     registry.py list [--context work|home] [--status STATUS] [--sort created_at|status|id]
                      [--include-done] [--json]
@@ -19,11 +20,10 @@ Usage:
 import argparse
 import json
 import os
-import re
 import tempfile
 from datetime import datetime, timezone
 
-from utils import REGISTRY_DIR, REGISTRY_FILE, err
+from utils import REGISTRY_DIR, REGISTRY_FILE, err, slugify
 
 VALID_STATUSES = ["Not Started", "In Progress", "Done"]
 
@@ -57,11 +57,6 @@ def save(projects):
 
 ILLEGAL_CHARS = set("/:")
 ILLEGAL_CHARS_DISPLAY = "/ and :"
-
-
-def to_folder_name(name):
-    """Format a project name as a folder-safe string: strip / and : only, preserve everything else."""
-    return re.sub(r"[/:]", "", name).strip()
 
 
 def has_illegal_chars(name):
@@ -117,6 +112,8 @@ def cmd_check_name(args):
     """Exit 0 if name is valid and available, non-zero otherwise."""
     if has_illegal_chars(args.name):
         err(f"Project name contains illegal characters ({ILLEGAL_CHARS_DISPLAY}): '{args.name}'")
+    if not slugify(args.name):
+        err(f"Project name needs at least one letter or digit: '{args.name}'")
     projects = load()
     for p in projects:
         if p["name"].lower() == args.name.lower() and p.get("status") != "Done":
@@ -202,6 +199,9 @@ def cmd_update(args):
     if args.clear_closed_at:
         project["closed_at"] = None
 
+    if args.created_at is not None:
+        project["created_at"] = args.created_at
+
     if args.new_id is not None:
         project["id"] = args.new_id
 
@@ -260,7 +260,8 @@ def cmd_search(args):
 
 
 def cmd_folder_name(args):
-    print(to_folder_name(args.name))
+    # Prints the slug only; callers build the folder as '{id}_{slug}'.
+    print(slugify(args.name))
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +309,7 @@ def main():
     p.add_argument("--linear-url", dest="linear_url")
     p.add_argument("--closed-at", dest="closed_at", help="ISO timestamp or 'now'")
     p.add_argument("--clear-closed-at", action="store_true", dest="clear_closed_at")
+    p.add_argument("--created-at", dest="created_at", help="ISO timestamp (back-fill an earlier creation date)")
     p.add_argument("--new-id", dest="new_id", help="Reassign the project ID (used by Move)")
     p.set_defaults(func=cmd_update)
 

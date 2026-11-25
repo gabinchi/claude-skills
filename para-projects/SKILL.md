@@ -110,9 +110,9 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 **Steps:**
 1. `uv run scripts/registry.py check-name "{name}"` — abort immediately if name is already taken, before any external calls
 2. Determine prefix (`W` = work, `H` = home); get next ID: `uv run scripts/registry.py next-id W`
-3. Get sanitized name: `uv run scripts/registry.py folder-name "{name}"` → then folder name is `{id} - {sanitized}`
+3. Get the name slug: `uv run scripts/registry.py folder-name "{name}"` → then folder name is `{id}_{slug}`
 4. `uv run scripts/obsidian.py create --id {id} --name "{name}" --description "{desc}" --context {context}` — captures vault path
-5. Create Google Drive folder at `{gdrive_projects_path}/{id} - {sanitized}`. If it already exists, warn and continue. If creation fails after Obsidian succeeded, warn and continue (Drive can be created later).
+5. Create Google Drive folder at `{gdrive_projects_path}/{id}_{slug}`. If it already exists, warn and continue. If creation fails after Obsidian succeeded, warn and continue (Drive can be created later).
 6. `uv run scripts/linear.py create-project --context {context} --id {id} --name "{name}" --description "{desc}" --status "Not Started"` — captures `linear_project_id` and URL. On failure: keep folders, store `linear_project_id: null`, instruct user to sync later.
 7. If Linear succeeded: `uv run scripts/obsidian.py update --id {id} --name "{name}" --linear-id {linear_project_id} --linear-url "{linear_url}"`
 8. `uv run scripts/registry.py add --id {id} --name "{name}" --description "{desc}" --linear-id {linear_project_id} --linear-url "{linear_url}"`
@@ -120,8 +120,8 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 
 **Example output:**
 > ✅ Project created: **W00004 - Nelo Merchant Risk Model**
-> - Obsidian: `projects/W00004 - Nelo Merchant Risk Model/`
-> - Google Drive: `1 🎯 Projects/W00004 - Nelo Merchant Risk Model/`
+> - Obsidian: `projects/W00004_nelo_merchant_risk_model/`
+> - Google Drive: `1 🎯 Projects/W00004_nelo_merchant_risk_model/`
 > - Linear: https://linear.app/...
 >
 > Reminder: Akiflow only imports issues from Linear projects in your import filter. Select this project in Akiflow if you want its issues there.
@@ -137,7 +137,7 @@ Valid statuses: `Not Started` (default), `In Progress`, `Done`
 **Steps:**
 1. `uv run scripts/registry.py check-name "{new_name}"` — abort immediately if name contains `/` or `:`, or is already taken
 2. Find project: `uv run scripts/registry.py find "{id_or_name}"`
-3. Build old and new folder names: `{id} - {sanitized}`
+3. Build old and new folder names: `{id}_{slug}`
 4. `uv run scripts/obsidian.py rename --id {id} --old-name "{old_name}" --new-name "{new_name}"`
 5. Rename Google Drive folder; if Drive fails, rename Obsidian folder back and abort
 6. If `linear_project_id` is set: `uv run scripts/linear.py update-project {linear_project_id} --name "{id} - {new_name}"`; if it fails, warn but do not roll back — folders and registry are source of truth
@@ -178,8 +178,8 @@ Output is a table. Use `--json` if you need structured data.
 **Intent:** "show project {id}", "project details", "describe project"
 
 Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, plus derived folder paths:
-- Obsidian: `{obsidian_vault_path}/{id} - {sanitized}/` (or under Archive if Done)
-- Google Drive: `{gdrive_projects_path}/{id} - {sanitized}/` (or archive path if Done)
+- Obsidian: `{obsidian_vault_path}/{id}_{slug}/` (or under Archive if Done)
+- Google Drive: `{gdrive_projects_path}/{id}_{slug}/` (or archive path if Done)
 - Linear: `{linear_url}` if set
 
 ---
@@ -243,7 +243,7 @@ Run: `uv run scripts/registry.py find "{id_or_name}"` and display all fields, pl
    > Moving **{old_id} — {name}** to **{context}** will assign it a new ID (**{new_id}**). The old ID will no longer exist.
    > Reply **yes** to confirm.
 4. `uv run scripts/obsidian.py rename --id {old_id} --old-name "{name}" --new-name "{name}" --new-id {new_id}`
-5. Rename Google Drive folder `{old_id} - {name}` → `{new_id} - {name}`; if Drive fails, roll Obsidian back with `obsidian.py rename --id {new_id} --old-name "{name}" --new-name "{name}" --new-id {old_id}` and abort
+5. Rename Google Drive folder `{old_id}_{slug}` → `{new_id}_{slug}`; if Drive fails, roll Obsidian back with `obsidian.py rename --id {new_id} --old-name "{name}" --new-name "{name}" --new-id {old_id}` and abort
 6. If `linear_project_id` is set: `uv run scripts/linear.py update-project {linear_project_id} --name "{new_id} - {name}" --context {new_context}`; if team change fails, warn and leave on current team (still try name update without `--context`)
 7. `uv run scripts/registry.py update "{old_id}" --new-id {new_id}`
 8. Confirm to user with old and new IDs and Linear URL
@@ -328,11 +328,15 @@ All scripts write errors as JSON to stderr: `{"error": "message"}`. When a scrip
 
 ## Folder Name Convention
 
-Pattern: `{id} - {name}` — original casing preserved, only `/` and `:` stripped (illegal on macOS filesystems)
+Pattern: `{id}_{slug}` — no spaces. The slug is the name lowercased and folded to ASCII, with every run of characters other than `a-z`/`0-9` replaced by one `_` (leading/trailing `_` dropped). Get it with `registry.py folder-name "{name}"`.
 
-Example: "Fraud Adjudication Agent" → `W00001 - Fraud Adjudication Agent`
-Example: "Q&A Research" → `W00002 - Q&A Research`
+Example: "Fraud Adjudication Agent" → `W00001_fraud_adjudication_agent`
+Example: "The Practice - Go to Market Plan" → `W00002_the_practice_go_to_market_plan`
 
-Project names containing `/` or `:` are rejected at creation time by `check-name`.
+Project names containing `/` or `:`, or with no letters or digits, are rejected at creation time by `check-name`.
 
-Obsidian note path: `{vault}/{id} - {name}/{id} - {name}.md`
+Obsidian note path: `{vault}/{id}_{slug}/{id}_{slug}.md`. The scripts only ever treat a note whose name starts with the project ID as the project note; other notes in the folder are never rewritten or deleted. If a folder has no project note, `obsidian.py update` creates one.
+
+Linear project names stay human-readable: `{id} - {name}`.
+
+Folders in the old `{id} - {name}` format are still found by the scripts; renaming a project moves it to the new format.

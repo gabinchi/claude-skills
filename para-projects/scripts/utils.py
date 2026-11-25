@@ -6,7 +6,9 @@ Imported by registry.py, linear.py, obsidian.py, and setup.py.
 
 import json
 import os
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -47,3 +49,18 @@ def load_config():
 def expand_path(path_str):
     """Expand ~ in a config path string and return a Path."""
     return Path(os.path.expanduser(path_str))
+
+
+# ---------------------------------------------------------------------------
+# Naming
+# ---------------------------------------------------------------------------
+
+def slugify(name):
+    """Lowercase ASCII slug: each run of characters other than a-z/0-9 becomes one underscore."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", ascii_name.lower()).strip("_")
+
+
+def folder_name(project_id, name):
+    """Project folder name, e.g. 'W00001_go_to_market_plan'."""
+    return f"{project_id}_{slugify(name)}"
